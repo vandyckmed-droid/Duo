@@ -106,8 +106,8 @@ export default function App() {
             ))}
           </ol>
           <footer className="colophon">
-            {ranked.length} constituents · {activeMetric.description} Data
-            through {priceData.generatedAt}.
+            {ranked.length} constituents · {activeMetric.description} Prices
+            as of {priceData.generatedAt}.
           </footer>
         </>
       )}

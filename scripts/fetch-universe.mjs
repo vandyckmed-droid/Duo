@@ -119,7 +119,16 @@ async function pooled(items, limit, worker) {
 }
 
 async function main() {
-  const to = new Date().toISOString().slice(0, 10)
+  const generatedAt = new Date().toISOString().slice(0, 10)
+
+  // The run date may still be mid-session, so the requested range ends the
+  // day before — the dataset only ever holds settled end-of-day closes.
+  // Losing one settled close when run after hours is harmless; committing
+  // an unsettled intraday print as a "close" is not.
+  const toDate = new Date()
+  toDate.setUTCDate(toDate.getUTCDate() - 1)
+  const to = toDate.toISOString().slice(0, 10)
+
   const fromDate = new Date()
   fromDate.setUTCFullYear(fromDate.getUTCFullYear() - YEARS)
   const from = fromDate.toISOString().slice(0, 10)
@@ -160,12 +169,12 @@ async function main() {
   await mkdir(resolve(ROOT, 'public/data'), { recursive: true })
   await writeFile(
     resolve(ROOT, 'public/data/prices.json'),
-    JSON.stringify({ generatedAt: to, from, to, dates, series }),
+    JSON.stringify({ generatedAt, from, to, dates, series }),
   )
 
   await writeFile(
     resolve(ROOT, 'src/data/universe.generated.ts'),
-    renderUniverse(universe, to),
+    renderUniverse(universe, generatedAt),
   )
 
   console.log(
