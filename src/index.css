@@ -1,9 +1,42 @@
+/*
+ * Design tokens.
+ *
+ * Every colour, size and rhythm value the app uses is declared here, so the
+ * look can be retuned without touching a component. The palette is
+ * deliberately two colours and a few steps of grey — the contrast between
+ * the active metric and the rest is the only emphasis the list needs.
+ */
 :root {
   --color-bg: #000000;
   --color-fg: #ffffff;
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --space-md: 16px;
-  --font-size-heading: 1.5rem;
+  --color-dim: #8a8a8a;
+  --color-faint: #4a4a4a;
+  --color-rule: #1c1c1c;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-xs: 0.6875rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.25rem;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 20px;
+
+  --mark-size: 26px;
+  --rank-width: 2.25ch;
+  --value-width: 5.5rem;
+  --row-height: 52px;
+  --content-max: 720px;
+
+  /* Logos are third-party and full-colour; desaturating keeps the page to
+     its two-colour palette. Set to `none` to let brand colour through. */
+  --logo-filter: grayscale(1) contrast(1.1);
+  --logo-opacity: 0.92;
 }
 
 * {
@@ -21,20 +54,229 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
+  font-size: var(--text-md);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
 }
 
 main {
-  min-height: 100svh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-md);
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 0 var(--space-md) var(--space-lg);
+}
+
+/* ---- Masthead ---------------------------------------------------------- */
+
+.masthead {
+  padding: var(--space-lg) 0 var(--space-md);
 }
 
 h1 {
   margin: 0;
-  font-size: var(--font-size-heading);
-  font-weight: 500;
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.subtitle {
+  margin: var(--space-xs) 0 0;
+  color: var(--color-dim);
+  font-size: var(--text-sm);
+}
+
+/* ---- Shared row grid --------------------------------------------------- */
+
+/*
+ * The column header and every stock row share one grid definition, so the
+ * values stay in their columns without either side hard-coding widths.
+ */
+.columns,
+.row {
+  display: grid;
+  grid-template-columns:
+    var(--rank-width) var(--mark-size) minmax(0, 1fr)
+    repeat(var(--metric-count, 2), var(--value-width));
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.columns {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--space-sm) 0;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-rule);
+}
+
+.column-label {
+  font-size: var(--text-xs);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-dim);
+}
+
+/* The metric headings are the sort control — tapping one ranks by it. */
+button.column-label {
+  appearance: none;
+  border: 0;
+  padding: var(--space-xs) 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: right;
+}
+
+button.column-label:hover {
+  color: var(--color-fg);
+}
+
+.column-active {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+:where(button, a):focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: 2px;
+}
+
+/* ---- Rows -------------------------------------------------------------- */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  height: var(--row-height);
+  border-bottom: 1px solid var(--color-rule);
+  /* Keeps 400 rows cheap: offscreen rows are not laid out until needed. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--row-height);
+}
+
+.rank {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mark,
+.mark-spacer {
+  width: var(--mark-size);
+  height: var(--mark-size);
+  border-radius: 3px;
+}
+
+.mark {
+  position: relative;
+  display: block;
+  overflow: hidden;
+}
+
+/*
+ * The monogram is the base layer: it is what shows when a ticker has no
+ * logo, when one is still downloading, or when the request fails. The row
+ * therefore never renders an empty box, and never reflows.
+ */
+.mark-monogram {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--color-faint);
+  border-radius: 3px;
+  color: var(--color-dim);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.mark-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 3px;
+  background: var(--color-fg);
+  filter: var(--logo-filter);
+  opacity: 0;
+}
+
+/* Painted over the monogram only once the image has actually decoded. */
+.mark-image-loaded {
+  opacity: var(--logo-opacity);
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ticker {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.name {
+  color: var(--color-dim);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.value {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--color-dim);
+}
+
+/* The metric being ranked by is the one the eye should land on. */
+.value-active {
+  color: var(--color-fg);
+  font-weight: 600;
+}
+
+/* ---- Chrome ------------------------------------------------------------ */
+
+.notice {
+  padding: var(--space-lg) 0;
+  color: var(--color-dim);
+  font-size: var(--text-sm);
+}
+
+.colophon {
+  padding: var(--space-lg) 0 0;
+  color: var(--color-faint);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+/* ---- Narrow phones ----------------------------------------------------- */
+
+@media (max-width: 24rem) {
+  :root {
+    --value-width: 4.75rem;
+    --mark-size: 22px;
+  }
+
+  .name {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

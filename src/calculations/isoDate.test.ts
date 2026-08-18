@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseIsoDateToUtc, toPriceObservation } from './priceObservation.ts'
+import { parseIsoDateToUtc } from './isoDate.ts'
 
 describe('parseIsoDateToUtc', () => {
   it('parses a bare ISO date as UTC midnight', () => {
@@ -51,28 +51,5 @@ describe('parseIsoDateToUtc', () => {
 
   it('rejects 29 February in a non-leap year', () => {
     expect(parseIsoDateToUtc('2023-02-29')).toBeNull()
-  })
-})
-
-describe('toPriceObservation', () => {
-  it('converts a usable point', () => {
-    expect(toPriceObservation({ date: '2024-01-15', adjustedClose: 100 })).toEqual(
-      { timestamp: Date.UTC(2024, 0, 15), adjustedClose: 100 },
-    )
-  })
-
-  it.each([
-    ['a zero price', 0],
-    ['a negative price', -1],
-    ['NaN', NaN],
-    ['Infinity', Infinity],
-  ])('rejects %s', (_label, adjustedClose) => {
-    expect(toPriceObservation({ date: '2024-01-15', adjustedClose })).toBeNull()
-  })
-
-  it('rejects an unusable date even when the price is fine', () => {
-    expect(
-      toPriceObservation({ date: 'not-a-date', adjustedClose: 100 }),
-    ).toBeNull()
   })
 })
