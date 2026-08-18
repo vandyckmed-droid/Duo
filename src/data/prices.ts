@@ -1,0 +1,192 @@
+import type { StockTicker } from './stocks.ts'
+import type { StockPriceHistory } from './types.ts'
+
+/**
+ * Adjusted price history for every stock in the universe.
+ *
+ * SYNTHETIC PLACEHOLDER DATA — none of this is observed market data. The dates
+ * are monthly anchors on the first of each month, not trading days: several
+ * fall on weekends or holidays, when no close exists. The values are invented
+ * figures chosen to look plausible, not real prices. Both are here only to give
+ * the shape something to hold until a real price source replaces them.
+ *
+ * What is real is the span: 13 anchors covering 12 months, the minimum a 12M
+ * raw return needs. Points are explicit date/price pairs rather than a shared
+ * date grid, so a per-ticker feed can replace them one ticker at a time without
+ * changing the shape.
+ *
+ * Typed as a total record over `StockTicker`, so adding a stock to `STOCKS`
+ * without adding its history is a compile error.
+ */
+export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
+  AAPL: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 224.50 },
+      { date: '2025-09-01', adjustedClose: 229.80 },
+      { date: '2025-10-01', adjustedClose: 236.10 },
+      { date: '2025-11-01', adjustedClose: 241.75 },
+      { date: '2025-12-01', adjustedClose: 233.40 },
+      { date: '2026-01-01', adjustedClose: 245.90 },
+      { date: '2026-02-01', adjustedClose: 251.20 },
+      { date: '2026-03-01', adjustedClose: 244.60 },
+      { date: '2026-04-01', adjustedClose: 252.85 },
+      { date: '2026-05-01', adjustedClose: 259.10 },
+      { date: '2026-06-01', adjustedClose: 263.75 },
+      { date: '2026-07-01', adjustedClose: 258.40 },
+      { date: '2026-08-01', adjustedClose: 268.40 },
+    ],
+  },
+  MSFT: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 415.20 },
+      { date: '2025-09-01', adjustedClose: 421.65 },
+      { date: '2025-10-01', adjustedClose: 408.90 },
+      { date: '2025-11-01', adjustedClose: 433.10 },
+      { date: '2025-12-01', adjustedClose: 445.75 },
+      { date: '2026-01-01', adjustedClose: 438.20 },
+      { date: '2026-02-01', adjustedClose: 452.60 },
+      { date: '2026-03-01', adjustedClose: 461.05 },
+      { date: '2026-04-01', adjustedClose: 455.30 },
+      { date: '2026-05-01', adjustedClose: 470.80 },
+      { date: '2026-06-01', adjustedClose: 484.25 },
+      { date: '2026-07-01', adjustedClose: 493.60 },
+      { date: '2026-08-01', adjustedClose: 502.10 },
+    ],
+  },
+  NVDA: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 118.30 },
+      { date: '2025-09-01', adjustedClose: 126.45 },
+      { date: '2025-10-01', adjustedClose: 134.80 },
+      { date: '2025-11-01', adjustedClose: 129.15 },
+      { date: '2025-12-01', adjustedClose: 142.60 },
+      { date: '2026-01-01', adjustedClose: 151.25 },
+      { date: '2026-02-01', adjustedClose: 148.90 },
+      { date: '2026-03-01', adjustedClose: 160.35 },
+      { date: '2026-04-01', adjustedClose: 172.10 },
+      { date: '2026-05-01', adjustedClose: 165.70 },
+      { date: '2026-06-01', adjustedClose: 181.40 },
+      { date: '2026-07-01', adjustedClose: 189.55 },
+      { date: '2026-08-01', adjustedClose: 196.75 },
+    ],
+  },
+  AMZN: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 178.60 },
+      { date: '2025-09-01', adjustedClose: 184.25 },
+      { date: '2025-10-01', adjustedClose: 191.40 },
+      { date: '2025-11-01', adjustedClose: 187.95 },
+      { date: '2025-12-01', adjustedClose: 196.30 },
+      { date: '2026-01-01', adjustedClose: 203.85 },
+      { date: '2026-02-01', adjustedClose: 199.10 },
+      { date: '2026-03-01', adjustedClose: 208.70 },
+      { date: '2026-04-01', adjustedClose: 214.55 },
+      { date: '2026-05-01', adjustedClose: 221.30 },
+      { date: '2026-06-01', adjustedClose: 217.60 },
+      { date: '2026-07-01', adjustedClose: 226.15 },
+      { date: '2026-08-01', adjustedClose: 231.40 },
+    ],
+  },
+  GOOGL: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 162.80 },
+      { date: '2025-09-01', adjustedClose: 168.35 },
+      { date: '2025-10-01', adjustedClose: 165.20 },
+      { date: '2025-11-01', adjustedClose: 174.90 },
+      { date: '2025-12-01', adjustedClose: 181.45 },
+      { date: '2026-01-01', adjustedClose: 177.60 },
+      { date: '2026-02-01', adjustedClose: 186.25 },
+      { date: '2026-03-01', adjustedClose: 192.80 },
+      { date: '2026-04-01', adjustedClose: 189.35 },
+      { date: '2026-05-01', adjustedClose: 197.70 },
+      { date: '2026-06-01', adjustedClose: 203.15 },
+      { date: '2026-07-01', adjustedClose: 199.40 },
+      { date: '2026-08-01', adjustedClose: 208.95 },
+    ],
+  },
+  META: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 522.40 },
+      { date: '2025-09-01', adjustedClose: 538.75 },
+      { date: '2025-10-01', adjustedClose: 511.30 },
+      { date: '2025-11-01', adjustedClose: 549.60 },
+      { date: '2025-12-01', adjustedClose: 563.25 },
+      { date: '2026-01-01', adjustedClose: 556.80 },
+      { date: '2026-02-01', adjustedClose: 574.15 },
+      { date: '2026-03-01', adjustedClose: 588.40 },
+      { date: '2026-04-01', adjustedClose: 571.95 },
+      { date: '2026-05-01', adjustedClose: 596.30 },
+      { date: '2026-06-01', adjustedClose: 605.70 },
+      { date: '2026-07-01', adjustedClose: 612.25 },
+      { date: '2026-08-01', adjustedClose: 618.30 },
+    ],
+  },
+  TSLA: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 214.10 },
+      { date: '2025-09-01', adjustedClose: 226.85 },
+      { date: '2025-10-01', adjustedClose: 241.30 },
+      { date: '2025-11-01', adjustedClose: 232.75 },
+      { date: '2025-12-01', adjustedClose: 219.40 },
+      { date: '2026-01-01', adjustedClose: 235.60 },
+      { date: '2026-02-01', adjustedClose: 248.25 },
+      { date: '2026-03-01', adjustedClose: 256.90 },
+      { date: '2026-04-01', adjustedClose: 243.15 },
+      { date: '2026-05-01', adjustedClose: 261.70 },
+      { date: '2026-06-01', adjustedClose: 254.35 },
+      { date: '2026-07-01', adjustedClose: 263.80 },
+      { date: '2026-08-01', adjustedClose: 268.90 },
+    ],
+  },
+  JPM: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 218.70 },
+      { date: '2025-09-01', adjustedClose: 224.15 },
+      { date: '2025-10-01', adjustedClose: 231.60 },
+      { date: '2025-11-01', adjustedClose: 227.35 },
+      { date: '2025-12-01', adjustedClose: 236.80 },
+      { date: '2026-01-01', adjustedClose: 243.25 },
+      { date: '2026-02-01', adjustedClose: 239.70 },
+      { date: '2026-03-01', adjustedClose: 248.15 },
+      { date: '2026-04-01', adjustedClose: 254.60 },
+      { date: '2026-05-01', adjustedClose: 250.35 },
+      { date: '2026-06-01', adjustedClose: 258.80 },
+      { date: '2026-07-01', adjustedClose: 261.25 },
+      { date: '2026-08-01', adjustedClose: 264.15 },
+    ],
+  },
+  XOM: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 114.20 },
+      { date: '2025-09-01', adjustedClose: 111.85 },
+      { date: '2025-10-01', adjustedClose: 116.40 },
+      { date: '2025-11-01', adjustedClose: 109.75 },
+      { date: '2025-12-01', adjustedClose: 113.30 },
+      { date: '2026-01-01', adjustedClose: 107.90 },
+      { date: '2026-02-01', adjustedClose: 112.45 },
+      { date: '2026-03-01', adjustedClose: 105.60 },
+      { date: '2026-04-01', adjustedClose: 110.15 },
+      { date: '2026-05-01', adjustedClose: 103.80 },
+      { date: '2026-06-01', adjustedClose: 108.35 },
+      { date: '2026-07-01', adjustedClose: 106.90 },
+      { date: '2026-08-01', adjustedClose: 108.60 },
+    ],
+  },
+  WMT: {
+    points: [
+      { date: '2025-08-01', adjustedClose: 68.40 },
+      { date: '2025-09-01', adjustedClose: 71.25 },
+      { date: '2025-10-01', adjustedClose: 74.80 },
+      { date: '2025-11-01', adjustedClose: 73.15 },
+      { date: '2025-12-01', adjustedClose: 77.60 },
+      { date: '2026-01-01', adjustedClose: 80.35 },
+      { date: '2026-02-01', adjustedClose: 78.90 },
+      { date: '2026-03-01', adjustedClose: 82.45 },
+      { date: '2026-04-01', adjustedClose: 85.70 },
+      { date: '2026-05-01', adjustedClose: 84.25 },
+      { date: '2026-06-01', adjustedClose: 88.60 },
+      { date: '2026-07-01', adjustedClose: 90.15 },
+      { date: '2026-08-01', adjustedClose: 92.15 },
+    ],
+  },
+}
