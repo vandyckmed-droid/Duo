@@ -1,0 +1,225 @@
+# Self-triggering Builder <-> Reviewer loop.
+#
+# The whole loop runs inside ONE workflow run with the cycles unrolled, so the
+# 3-cycle cap is structural rather than something a counter has to enforce, and
+# there is no path by which the workflow can re-trigger itself.
+name: PR Agent Loop
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One loop per PR. A new push supersedes an in-flight loop.
+concurrency:
+  group: pr-agent-loop-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# No permissions by default; each job below is granted only what it needs.
+permissions: {}
+
+jobs:
+  # Fork PRs get a read-only token and no secrets, so the loop cannot work
+  # there — and running agents on untrusted PR code would be unsafe anyway.
+  guard:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          if [ "$IS_FORK" = "true" ]; then
+            echo "Fork PR — skipping agent loop."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$TITLE" | grep -qF '[skip agents]'; then
+            echo "Title opts out — skipping agent loop."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ---- Cycle 0: initial review -------------------------------------------
+  review_1:
+    needs: guard
+    if: needs.guard.outputs.run == 'true'
+    uses: ./.github/workflows/_agent-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      cycle: "1"
+
+  # ---- Cycle 1 -------------------------------------------------------------
+  build_1:
+    needs: review_1
+    if: needs.review_1.outputs.verdict == 'CHANGES_NEEDED'
+    uses: ./.github/workflows/_agent-build.yml
+    permissions:
+      contents: write
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      head_ref: ${{ github.event.pull_request.head.ref }}
+      cycle: "1"
+      findings: ${{ needs.review_1.outputs.findings }}
+      review_summary: ${{ needs.review_1.outputs.summary }}
+
+  review_2:
+    needs: build_1
+    if: needs.build_1.outputs.pushed == 'true'
+    uses: ./.github/workflows/_agent-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      cycle: "2"
+
+  # ---- Cycle 2 -------------------------------------------------------------
+  build_2:
+    needs: review_2
+    if: needs.review_2.outputs.verdict == 'CHANGES_NEEDED'
+    uses: ./.github/workflows/_agent-build.yml
+    permissions:
+      contents: write
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      head_ref: ${{ github.event.pull_request.head.ref }}
+      cycle: "2"
+      findings: ${{ needs.review_2.outputs.findings }}
+      review_summary: ${{ needs.review_2.outputs.summary }}
+
+  review_3:
+    needs: build_2
+    if: needs.build_2.outputs.pushed == 'true'
+    uses: ./.github/workflows/_agent-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      cycle: "3"
+
+  # ---- Cycle 3 (final) -----------------------------------------------------
+  build_3:
+    needs: review_3
+    if: needs.review_3.outputs.verdict == 'CHANGES_NEEDED'
+    uses: ./.github/workflows/_agent-build.yml
+    permissions:
+      contents: write
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      head_ref: ${{ github.event.pull_request.head.ref }}
+      cycle: "3"
+      findings: ${{ needs.review_3.outputs.findings }}
+      review_summary: ${{ needs.review_3.outputs.summary }}
+
+  review_4:
+    needs: build_3
+    if: needs.build_3.outputs.pushed == 'true'
+    uses: ./.github/workflows/_agent-review.yml
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    with:
+      pr_number: ${{ github.event.pull_request.number }}
+      cycle: "4"
+
+  # ---- Outcome -------------------------------------------------------------
+  outcome:
+    needs:
+      [guard, review_1, build_1, review_2, build_2, review_3, build_3, review_4]
+    if: always() && needs.guard.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Decide and report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          R1: ${{ needs.review_1.outputs.verdict }}
+          R2: ${{ needs.review_2.outputs.verdict }}
+          R3: ${{ needs.review_3.outputs.verdict }}
+          R4: ${{ needs.review_4.outputs.verdict }}
+          S1: ${{ needs.review_1.outputs.summary }}
+          S2: ${{ needs.review_2.outputs.summary }}
+          S3: ${{ needs.review_3.outputs.summary }}
+          S4: ${{ needs.review_4.outputs.summary }}
+          H1: ${{ needs.review_1.outputs.human_reason }}
+          H2: ${{ needs.review_2.outputs.human_reason }}
+          H3: ${{ needs.review_3.outputs.human_reason }}
+          H4: ${{ needs.review_4.outputs.human_reason }}
+          BH1: ${{ needs.build_1.outputs.needs_human }}
+          BH2: ${{ needs.build_2.outputs.needs_human }}
+          BH3: ${{ needs.build_3.outputs.needs_human }}
+          BR1: ${{ needs.build_1.outputs.human_reason }}
+          BR2: ${{ needs.build_2.outputs.human_reason }}
+          BR3: ${{ needs.build_3.outputs.human_reason }}
+        run: |
+          set -euo pipefail
+
+          # Last review that actually ran wins; skipped jobs yield empty outputs.
+          VERDICT=""; SUMMARY=""; REASON=""; CYCLES=0
+          for i in 4 3 2 1; do
+            eval "V=\${R$i:-}"; eval "S=\${S$i:-}"; eval "H=\${H$i:-}"
+            if [ -n "$V" ]; then
+              VERDICT="$V"; SUMMARY="$S"; REASON="$H"; CYCLES=$((i - 1)); break
+            fi
+          done
+
+          # A Builder escalation overrides the review verdict.
+          BUILDER_REASON=""
+          for i in 1 2 3; do
+            eval "B=\${BH$i:-}"; eval "BR=\${BR$i:-}"
+            if [ "$B" = "true" ]; then BUILDER_REASON="$BR"; fi
+          done
+
+          if [ -n "$BUILDER_REASON" ]; then
+            STATE="NEEDS_HUMAN"; REASON="Builder escalated: $BUILDER_REASON"
+          elif [ -z "$VERDICT" ]; then
+            STATE="NEEDS_HUMAN"; REASON="No reviewer verdict was produced."
+          elif [ "$VERDICT" = "PASS" ]; then
+            STATE="PASS"
+          elif [ "$VERDICT" = "CHANGES_NEEDED" ]; then
+            STATE="NEEDS_HUMAN"
+            REASON="Still failing review after $CYCLES fix cycle(s); the 3-cycle limit is exhausted."
+          else
+            STATE="NEEDS_HUMAN"
+          fi
+
+          if [ "$STATE" = "PASS" ]; then
+            BODY=$(printf '## Agent loop: PASS\n\nReviewer approved after %s fix cycle(s). Ready for human merge — agents do not merge.\n\n%s\n\n[Run log](%s)' "$CYCLES" "$SUMMARY" "$RUN_URL")
+          else
+            BODY=$(printf '## Agent loop: NEEDS_HUMAN\n\n**Why:** %s\n\nFix cycles used: %s of 3.\n\n%s\n\n[Run log](%s)' "${REASON:-Human judgement required.}" "$CYCLES" "$SUMMARY" "$RUN_URL")
+          fi
+          BODY=$(printf '%s\n\n---\n_Generated by [Claude Code](https://claude.ai/code)_' "$BODY")
+
+          gh pr comment "$PR" --repo "$REPO" --body "$BODY"
+
+          echo "$BODY" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$STATE" != "PASS" ]; then
+            echo "::error::Agent loop ended as NEEDS_HUMAN — ${REASON:-human judgement required}"
+            exit 1
+          fi
+          echo "Agent loop passed. Awaiting human merge."

@@ -1,0 +1,157 @@
+# Reusable Builder Agent.
+#
+# The agent only edits and validates files. Committing and pushing is done by a
+# plain shell step using GITHUB_TOKEN, which is deterministic and — because
+# GitHub never re-triggers workflows for GITHUB_TOKEN pushes — is what keeps the
+# loop from re-entering itself.
+name: Agent Build
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      head_ref:
+        required: true
+        type: string
+      cycle:
+        required: true
+        type: string
+      findings:
+        required: true
+        type: string
+      review_summary:
+        required: true
+        type: string
+    outputs:
+      pushed:
+        description: Whether a commit was pushed to the PR branch
+        value: ${{ jobs.build.outputs.pushed }}
+      needs_human:
+        description: Whether the Builder escalated to a human
+        value: ${{ jobs.build.outputs.needs_human }}
+      human_reason:
+        description: Why the Builder escalated
+        value: ${{ jobs.build.outputs.human_reason }}
+      summary:
+        description: What the Builder changed
+        value: ${{ jobs.build.outputs.summary }}
+    secrets:
+      anthropic_api_key:
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      pushed: ${{ steps.push.outputs.pushed }}
+      needs_human: ${{ steps.parse.outputs.needs_human }}
+      human_reason: ${{ steps.parse.outputs.human_reason }}
+      summary: ${{ steps.parse.outputs.summary }}
+    steps:
+      # Check out the PR branch by name so the push below targets exactly it.
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply fixes
+        id: fix
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          prompt: |
+            You are the Builder Agent for PR #${{ inputs.pr_number }}
+            in ${{ github.repository }}. This is fix cycle ${{ inputs.cycle }}.
+
+            Fix ONLY the reviewer findings below. They are your complete and only
+            instructions — do not re-review the PR, and do not act on anything not
+            listed here.
+
+            Reviewer summary:
+            ${{ inputs.review_summary }}
+
+            Reviewer findings (JSON):
+            ${{ inputs.findings }}
+
+            Rules:
+            - Make the smallest change that resolves each finding.
+            - Do not refactor, rename, or "improve" anything not named in a finding.
+            - Validate before finishing: `npm ci`, then `npm run lint`, then
+              `npm run build` must all succeed. Run the test script if one exists.
+            - If a finding requires a product, design, or architectural decision, or
+              you cannot resolve it without guessing at intent, stop and set
+              needs_human to true with a clear reason. Do not guess.
+            - Do not run git commit or git push; the workflow commits your work.
+            - Never merge the pull request.
+
+            Report what you changed and whether validation passed.
+          claude_args: |
+            --max-turns 40
+            --allowedTools "Read,Grep,Glob,Edit,Write,Bash(npm ci),Bash(npm run lint),Bash(npm run build),Bash(npm test),Bash(npm run test),Bash(git diff:*),Bash(git status:*),Bash(ls:*)"
+            --json-schema '{"type":"object","properties":{"changes_made":{"type":"boolean","description":"Whether any files were modified"},"validated":{"type":"boolean","description":"Whether lint and build both succeeded after the changes"},"commit_message":{"type":"string","description":"Concise imperative commit subject, max 72 characters"},"summary":{"type":"string","description":"What was changed and why, one short paragraph"},"needs_human":{"type":"boolean","description":"True if a finding requires human judgement and was not fixed"},"human_reason":{"type":"string","description":"Why a human is required. Empty unless needs_human is true."}},"required":["changes_made","validated","commit_message","summary","needs_human","human_reason"]}'
+
+      - name: Parse builder output
+        id: parse
+        env:
+          RAW: ${{ steps.fix.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW:-}" ] || ! echo "$RAW" | jq -e . >/dev/null 2>&1; then
+            echo "Builder produced no valid structured output; escalating."
+            {
+              echo "needs_human=true"
+              echo "changes_made=false"
+              echo "validated=false"
+              echo "commit_message="
+              echo "summary=Builder agent did not return valid structured output."
+              echo "human_reason=Builder agent failed to produce a structured result."
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "needs_human=$(echo "$RAW" | jq -r '.needs_human')"
+            echo "changes_made=$(echo "$RAW" | jq -r '.changes_made')"
+            echo "validated=$(echo "$RAW" | jq -r '.validated')"
+            echo "commit_message<<EOF_MSG"
+            echo "$RAW" | jq -r '.commit_message'
+            echo "EOF_MSG"
+            echo "summary<<EOF_SUM"
+            echo "$RAW" | jq -r '.summary'
+            echo "EOF_SUM"
+            echo "human_reason<<EOF_REASON"
+            echo "$RAW" | jq -r '.human_reason // ""'
+            echo "EOF_REASON"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        id: push
+        if: steps.parse.outputs.needs_human != 'true'
+        env:
+          COMMIT_MSG: ${{ steps.parse.outputs.commit_message }}
+          HEAD_REF: ${{ inputs.head_ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No file changes to commit."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git status --short
+          git commit -m "${COMMIT_MSG:-Apply reviewer findings}"
+          # Pushes authenticated with GITHUB_TOKEN do not start new workflow runs.
+          git push origin "HEAD:${HEAD_REF}"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"

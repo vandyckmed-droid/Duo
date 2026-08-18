@@ -1,0 +1,120 @@
+# Reusable Reviewer Agent.
+#
+# Read-only by construction: `contents: read` means this job's token cannot
+# push, independent of what the agent is prompted to do.
+name: Agent Review
+
+on:
+  workflow_call:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      cycle:
+        required: true
+        type: string
+    outputs:
+      verdict:
+        description: PASS | CHANGES_NEEDED | NEEDS_HUMAN
+        value: ${{ jobs.review.outputs.verdict }}
+      summary:
+        description: One-paragraph reviewer summary
+        value: ${{ jobs.review.outputs.summary }}
+      findings:
+        description: JSON array of findings the Builder must address
+        value: ${{ jobs.review.outputs.findings }}
+      human_reason:
+        description: Why human input is required (when verdict is NEEDS_HUMAN)
+        value: ${{ jobs.review.outputs.human_reason }}
+    secrets:
+      anthropic_api_key:
+        required: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      verdict: ${{ steps.parse.outputs.verdict }}
+      summary: ${{ steps.parse.outputs.summary }}
+      findings: ${{ steps.parse.outputs.findings }}
+      human_reason: ${{ steps.parse.outputs.human_reason }}
+    steps:
+      # refs/pull/N/head always resolves the *current* PR head, so later
+      # cycles review the Builder's pushed commits rather than a stale SHA.
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ inputs.pr_number }}/head
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Review
+        id: review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.anthropic_api_key }}
+          prompt: |
+            You are the Reviewer Agent for PR #${{ inputs.pr_number }}
+            in ${{ github.repository }}. This is review cycle ${{ inputs.cycle }}.
+
+            Review independently. Do not assume previous cycles were correct.
+
+            1. Read the diff against the base branch: `git diff origin/${{ github.event.pull_request.base.ref || 'main' }}...HEAD`
+            2. Validate by actually running: `npm ci`, then `npm run lint`, then `npm run build`.
+               Run the test script too if package.json defines one.
+            3. Judge scope: does the diff do what the PR says, and nothing more?
+               Flag unrelated or speculative changes.
+            4. Judge architecture: correctness, maintainability, and fit with the
+               existing codebase.
+
+            Return a verdict:
+            - PASS: builds, lints, in scope, no material problems. A human will merge.
+            - CHANGES_NEEDED: concrete, mechanical defects an agent can fix without
+              guessing at intent. Every finding must be specific and actionable.
+            - NEEDS_HUMAN: a product, design, or architectural decision is required;
+              the intent is ambiguous; or the fix would require judgement calls a
+              reviewer cannot make on the author's behalf.
+
+            Prefer NEEDS_HUMAN over guessing. Never merge, never edit files,
+            never push. You are read-only.
+          claude_args: |
+            --max-turns 30
+            --allowedTools "Read,Grep,Glob,Bash(npm ci),Bash(npm run lint),Bash(npm run build),Bash(npm test),Bash(npm run test),Bash(git diff:*),Bash(git log:*),Bash(git status:*),Bash(ls:*)"
+            --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","CHANGES_NEEDED","NEEDS_HUMAN"],"description":"Overall review verdict"},"summary":{"type":"string","description":"One paragraph explaining the verdict, including build and lint results"},"findings":{"type":"array","description":"Specific defects the Builder must fix. Empty unless verdict is CHANGES_NEEDED.","items":{"type":"object","properties":{"file":{"type":"string","description":"Repo-relative file path, or empty if not file-specific"},"detail":{"type":"string","description":"What is wrong and what the correct behaviour is"}},"required":["detail"]}},"human_reason":{"type":"string","description":"Why a human is required. Empty unless verdict is NEEDS_HUMAN."}},"required":["verdict","summary","findings","human_reason"]}'
+
+      # Fail closed: if the agent errored or returned nothing parseable,
+      # escalate to a human rather than silently continuing the loop.
+      - name: Parse verdict
+        id: parse
+        env:
+          RAW: ${{ steps.review.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAW:-}" ] || ! echo "$RAW" | jq -e . >/dev/null 2>&1; then
+            echo "Reviewer produced no valid structured output; escalating."
+            {
+              echo "verdict=NEEDS_HUMAN"
+              echo "summary=Reviewer agent did not return valid structured output."
+              echo "findings=[]"
+              echo "human_reason=Reviewer agent failed to produce a structured verdict."
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "verdict=$(echo "$RAW" | jq -r '.verdict')"
+            echo "findings=$(echo "$RAW" | jq -c '.findings')"
+            echo "summary<<EOF_SUMMARY"
+            echo "$RAW" | jq -r '.summary'
+            echo "EOF_SUMMARY"
+            echo "human_reason<<EOF_REASON"
+            echo "$RAW" | jq -r '.human_reason // ""'
+            echo "EOF_REASON"
+          } >> "$GITHUB_OUTPUT"
