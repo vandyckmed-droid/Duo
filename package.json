@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "fetch:prices": "node --experimental-strip-types scripts/fetch-prices.mjs",
     "build": "tsc -b && vite build",
-    "lint": "oxlint src",
+    "lint": "oxlint src scripts",
     "preview": "vite preview",
     "test": "vitest run"
   },

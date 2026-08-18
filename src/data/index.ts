@@ -8,4 +8,6 @@
 export type { LogoRef, PricePoint, Stock, StockPriceHistory } from './types.ts'
 export { STOCKS } from './stocks.ts'
 export type { StockTicker } from './stocks.ts'
-export { PRICE_HISTORY } from './prices.ts'
+export { BENCHMARK } from './benchmark.ts'
+export { BENCHMARK_HISTORY, LAST_TRADING_DATE, PRICE_HISTORY } from './prices.ts'
+export { PRICE_SERIES_META } from './priceSeries.generated.ts'

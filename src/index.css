@@ -1,9 +1,31 @@
+/*
+ * One stylesheet, phone-first, black and white.
+ *
+ * Every colour, space and size is a token below. Restyling the product means
+ * editing the token block, not hunting through rules — which is the same
+ * reason the metric is a single constant: the things most likely to change
+ * are the things kept in one place.
+ */
 :root {
   --color-bg: #000000;
   --color-fg: #ffffff;
+  --color-muted: #7a7a7a;
+  --color-hairline: rgb(255 255 255 / 14%);
+
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
   --space-md: 16px;
+  --space-lg: 24px;
+
   --font-size-heading: 1.5rem;
+  --font-size-body: 1rem;
+  --font-size-small: 0.75rem;
+
+  --radius-card: 14px;
+  --logo-size: 28px;
+  --measure: 520px;
 }
 
 * {
@@ -21,20 +43,113 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
+  font-size: var(--font-size-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 main {
-  min-height: 100svh;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 var(--space-md) var(--space-lg);
+}
+
+/* Masthead — the product name and the variable the cards are ranked by. */
+
+.masthead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-md);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) 0 var(--space-sm);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-hairline);
 }
 
 h1 {
   margin: 0;
   font-size: var(--font-size-heading);
   font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.masthead-metric {
+  font-size: var(--font-size-small);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+/* Cards — Logo · Ticker · Variable. */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  margin: var(--space-md) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-card);
+}
+
+.logo {
+  flex: none;
+  width: var(--logo-size);
+  height: var(--logo-size);
+  border-radius: 50%;
+  object-fit: contain;
+  /* Placeholder until there is a mark to put on a plate. */
+  border: 1px solid var(--color-hairline);
+}
+
+.logo-loaded {
+  /* Most marks are dark artwork on transparency; black on black is nothing. */
+  background: var(--color-fg);
+  border-color: transparent;
+  /* Marks arrive in brand colour; the product is not in colour. */
+  filter: grayscale(100%);
+}
+
+.logo-monogram {
+  display: grid;
+  place-items: center;
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+}
+
+.card-ticker {
+  flex: 1;
+  min-width: 0;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-value {
+  flex: none;
+  font-weight: 500;
+  /* Equal-width digits, so the column of numbers scans as a column. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Colophon — how current the prices are. */
+
+.colophon {
+  padding-top: var(--space-lg);
+  font-size: var(--font-size-small);
+  color: var(--color-muted);
+  text-align: center;
 }
