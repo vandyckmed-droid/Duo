@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { UNIVERSE, loadPriceData, type PriceData } from './data/index.ts'
-import { METRICS, metricById, rankBy } from './metrics/index.ts'
+import {
+  METRICS,
+  computeMetricValues,
+  metricById,
+  metricHiddenWhenNarrow,
+  rankValues,
+} from './metrics/index.ts'
 import { StockRow } from './ui/StockRow.tsx'
 
 /** Where the generated dataset is served from, relative to the app's base. */
@@ -43,10 +49,18 @@ export default function App() {
 
   const activeMetric = metricById(metricId)
 
-  const ranked = useMemo(
-    () => (priceData ? rankBy(UNIVERSE, priceData, activeMetric) : []),
-    [priceData, activeMetric],
+  // Values depend only on the data; only the ordering depends on the toggle.
+  const values = useMemo(
+    () => (priceData ? computeMetricValues(UNIVERSE, priceData) : []),
+    [priceData],
   )
+
+  const ranked = useMemo(
+    () => rankValues(values, activeMetric),
+    [values, activeMetric],
+  )
+
+  const hiddenWhenNarrowId = metricHiddenWhenNarrow(METRICS, activeMetric.id)
 
   const selectMetric = (id: string) => {
     window.location.hash = `metric=${id}`
@@ -71,11 +85,14 @@ export default function App() {
           <button
             key={metric.id}
             type="button"
-            className={
-              metric.id === activeMetric.id
-                ? 'value column-label column-active'
-                : 'value column-label'
-            }
+            className={[
+              'value',
+              'column-label',
+              metric.id === activeMetric.id ? 'column-active' : '',
+              metric.id === hiddenWhenNarrowId ? 'value-hidden-narrow' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
             aria-pressed={metric.id === activeMetric.id}
             title={metric.description}
             onClick={() => selectMetric(metric.id)}
@@ -102,6 +119,7 @@ export default function App() {
                 entry={entry}
                 metrics={METRICS}
                 activeMetricId={activeMetric.id}
+                hiddenWhenNarrowId={hiddenWhenNarrowId}
               />
             ))}
           </ol>

@@ -1,4 +1,16 @@
-import type { PriceSeries } from '../data/types.ts'
+import type { Benchmark, PriceSeries } from '../data/types.ts'
+
+/**
+ * What a metric can see beyond the stock's own prices.
+ *
+ * Passed to every metric, used by the ones that need it. A benchmark-relative
+ * measure would otherwise have to reach for module-level state or force each
+ * metric to be constructed with its dependencies; a second argument keeps
+ * metrics plain data and leaves the ones that ignore it untouched.
+ */
+export interface MetricContext {
+  readonly benchmark: Benchmark
+}
 
 /**
  * A rankable measure derived from a price series.
@@ -18,7 +30,10 @@ export interface Metric {
   /** One line explaining what the number means. */
   readonly description: string
   /** Computes the value, or `null` when the series cannot support it. */
-  readonly compute: (series: PriceSeries) => number | null
+  readonly compute: (
+    series: PriceSeries,
+    context: MetricContext,
+  ) => number | null
   /** Renders a computed value for display. */
   readonly format: (value: number) => string
   /**

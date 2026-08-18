@@ -22,6 +22,16 @@ const API_KEY = process.env.FMP_API_KEY ?? process.env.API_KEY
 const YEARS = 3
 const CONCURRENCY = 6
 
+/**
+ * The market surrogate for the universe.
+ *
+ * An ETF tracking the same index sidesteps survivorship bias: rebuilding the
+ * benchmark from today's constituents would silently exclude the names that
+ * left the index over the period, which skew toward the worst performers.
+ * IJH's realized returns already embed every reconstitution as it happened.
+ */
+const BENCHMARK = 'IJH'
+
 if (!API_KEY) {
   console.error('Set FMP_API_KEY (or API_KEY) in the environment.')
   process.exit(1)
@@ -145,6 +155,16 @@ async function main() {
     return { ticker: c.ticker, points }
   })
 
+  console.log(`Fetching benchmark ${BENCHMARK}…`)
+  const benchmarkPoints = await fetchPrices(BENCHMARK, from, to)
+  if (benchmarkPoints.length < 200) {
+    // Without a benchmark the residual metric silently disappears from every
+    // row, so this fails the run rather than writing a dataset that looks fine.
+    throw new Error(
+      `${BENCHMARK} returned only ${benchmarkPoints.length} closes`,
+    )
+  }
+
   // Keep only constituents that actually returned a usable series.
   const usable = histories.filter((h) => h.points.length > 200)
   const dropped = histories.filter((h) => h.points.length <= 200)
@@ -153,15 +173,28 @@ async function main() {
   }
 
   // Shared, ascending trading-day index across every series.
-  const dates = [...new Set(usable.flatMap((h) => h.points.map((p) => p.date)))].sort()
+  const dates = [
+    ...new Set([
+      ...usable.flatMap((h) => h.points.map((p) => p.date)),
+      ...benchmarkPoints.map((p) => p.date),
+    ]),
+  ].sort()
   const index = new Map(dates.map((d, i) => [d, i]))
+
+  const align = (points) => {
+    const row = new Array(dates.length).fill(null)
+    for (const p of points) row[index.get(p.date)] = p.close
+    return row
+  }
 
   const series = {}
   for (const { ticker, points } of usable) {
-    const row = new Array(dates.length).fill(null)
-    for (const p of points) row[index.get(p.date)] = p.close
-    series[ticker] = row
+    series[ticker] = align(points)
   }
+
+  // Held apart from `series` so the benchmark can never be ranked as though
+  // it were a constituent.
+  const benchmark = { ticker: BENCHMARK, closes: align(benchmarkPoints) }
 
   const kept = new Set(usable.map((h) => h.ticker))
   const universe = constituents.filter((c) => kept.has(c.ticker))
@@ -169,7 +202,7 @@ async function main() {
   await mkdir(resolve(ROOT, 'public/data'), { recursive: true })
   await writeFile(
     resolve(ROOT, 'public/data/prices.json'),
-    JSON.stringify({ generatedAt, from, to, dates, series }),
+    JSON.stringify({ generatedAt, from, to, dates, series, benchmark }),
   )
 
   await writeFile(
@@ -178,7 +211,7 @@ async function main() {
   )
 
   console.log(
-    `\nWrote ${universe.length} tickers × ${dates.length} trading days.`,
+    `\nWrote ${universe.length} tickers + ${BENCHMARK} × ${dates.length} trading days.`,
   )
 }
 

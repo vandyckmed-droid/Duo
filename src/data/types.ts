@@ -46,4 +46,20 @@ export interface PriceData {
   readonly timestamps: readonly number[]
   /** Series by ticker. Absent tickers simply have no history. */
   readonly series: Readonly<Record<string, PriceSeries>>
+  /**
+   * The market surrogate the universe is measured against.
+   *
+   * Held outside `series` on purpose: it shares the calendar and the shape of
+   * a constituent, so keeping it in the same map would make it one bad
+   * iteration away from being ranked as a stock.
+   */
+  readonly benchmark: Benchmark
+}
+
+/** A market surrogate: an identified series that is not a constituent. */
+export interface Benchmark {
+  /** Ticker of the instrument standing in for the market. */
+  readonly ticker: string
+  /** Its price series, on the shared calendar. */
+  readonly series: PriceSeries
 }

@@ -5,6 +5,7 @@ const valid = {
   generatedAt: '2025-01-02',
   dates: ['2025-01-01', '2025-01-02'],
   series: { AAA: [100, 110] },
+  benchmark: { ticker: 'IJH', closes: [50, 52] },
 }
 
 describe('parsePriceData', () => {
@@ -41,5 +42,29 @@ describe('parsePriceData', () => {
   it('rejects a malformed file rather than returning an empty dataset', () => {
     // A half-built dataset would silently rank nothing; failing is louder.
     expect(() => parsePriceData({} as never)).toThrow(/malformed/)
+  })
+
+  it('exposes the benchmark on the shared calendar', () => {
+    const data = parsePriceData(valid)
+
+    expect(data.benchmark.ticker).toBe('IJH')
+    expect(data.benchmark.series.timestamps).toBe(data.timestamps)
+    expect(data.benchmark.series.closes).toEqual([50, 52])
+  })
+
+  it('keeps the benchmark out of the rankable series', () => {
+    // Ranking iterates the universe, but a benchmark sitting in `series`
+    // would be one bad loop away from appearing as a constituent.
+    expect(Object.keys(parsePriceData(valid).series)).toEqual(['AAA'])
+  })
+
+  it.each([
+    ['a missing benchmark', { ...valid, benchmark: undefined }],
+    [
+      'a benchmark off the calendar',
+      { ...valid, benchmark: { ticker: 'IJH', closes: [50] } },
+    ],
+  ])('rejects %s', (_label, file) => {
+    expect(() => parsePriceData(file as never)).toThrow()
   })
 })

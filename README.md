@@ -32,12 +32,19 @@ Rebuilds both generated artifacts:
 - `src/data/universe.generated.ts` — ticker, name and sector for each
   constituent, scraped from the Wikipedia list of S&P 400 companies.
 - `public/data/prices.json` — three years of dividend-adjusted daily closes
-  per constituent, from Financial Modeling Prep.
+  per constituent, from Financial Modeling Prep, plus the benchmark series.
 
-Nothing is fetched at page load; the app reads the committed dataset. Three
-years is more history than the current metrics need — it is the span required
-to estimate beta against an equal-weight index, for the market-residualized
-return the metric registry is built to accept.
+Nothing is fetched at page load; the app reads the committed dataset.
+
+The benchmark is **IJH**, an ETF tracking the same index. Using a real ETF
+rather than rebuilding the index from today's constituents avoids survivorship
+bias: a reconstructed benchmark would silently omit the names that left the
+index over the period, which skew toward the worst performers. It is stored
+outside `series` so it can never be ranked as a constituent.
+
+Three years is more history than the return windows need — it is the span the
+beta estimate uses. Beta fitted over a single year comes back unstable enough
+to go negative; over three years it does not.
 
 ## Layout
 
