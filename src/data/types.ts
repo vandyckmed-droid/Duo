@@ -1,19 +1,12 @@
 /**
  * Stock data contract.
  *
- * Identity (`Stock`) is kept separate from price history (`StockPriceHistory`)
- * and the two are joined by `ticker`. Identity is small, stable and always
- * needed; history is large, refreshed on a different cadence and will later be
- * fetched per ticker. Keeping them apart means a remote price source can
- * replace the static history without touching identity, and vice versa.
+ * Identity (`Stock`) is kept separate from price history (`PriceSeries`) and
+ * the two are joined by `ticker`. Identity is small, stable and always
+ * needed; history is large, refreshed on a different cadence, and ships as a
+ * separately cacheable asset. Keeping them apart means the price source can
+ * be replaced without touching identity, and vice versa.
  */
-
-/**
- * A logo reference, not a URL. The presentation layer resolves it to an image
- * source, so the resolution strategy can change without touching the dataset.
- * Currently the company's primary domain.
- */
-export type LogoRef = string
 
 /** Static identity of a stock. */
 export interface Stock {
@@ -21,33 +14,36 @@ export interface Stock {
   readonly ticker: string
   /** Display name of the company. */
   readonly name: string
-  /** Reference used to resolve the company logo. */
-  readonly logo: LogoRef
-}
-
-/** A single dated point in a stock's adjusted price series. */
-export interface PricePoint {
-  /** ISO 8601 calendar date (YYYY-MM-DD) the price is anchored to. */
-  readonly date: string
-  /** Split- and dividend-adjusted close, in the stock's listing currency. */
-  readonly adjustedClose: number
+  /** GICS sector, as classified by the index. */
+  readonly sector: string
 }
 
 /**
- * Adjusted price history for one stock.
+ * Adjusted daily closes for one stock, aligned to a shared trading-day index.
  *
- * `points` span at least 12 months, which is what a 12M raw return needs.
- * Consumers derive returns from these points; no computed return is stored.
+ * Columnar rather than an array of dated objects: every series shares one
+ * `timestamps` array, so the calendar is parsed once for the whole universe
+ * instead of once per stock per day. Across 400 stocks and three years that
+ * is the difference between hundreds of thousands of allocations and a few
+ * hundred — the reason a phone can rank the whole index without stuttering.
  *
- * This dataset happens to list points oldest to newest, but that is a
- * property of the data, not a contract: the calculation layer selects
- * points by comparing their dates, never by position, so a feed that
- * returns newest-first needs no reordering.
- *
- * The stock this belongs to is carried by the key of the record holding it, so
- * the history itself does not repeat the ticker — there is nothing that can
- * disagree with the key.
+ * `closes[i]` is the dividend-adjusted close on `timestamps[i]`, or `null`
+ * where the stock had no listing or no usable print that day (a recent IPO
+ * has nulls across its pre-listing history).
  */
-export interface StockPriceHistory {
-  readonly points: readonly PricePoint[]
+export interface PriceSeries {
+  /** Shared, strictly ascending UTC timestamps. */
+  readonly timestamps: readonly number[]
+  /** Adjusted closes aligned to `timestamps`; `null` where unavailable. */
+  readonly closes: readonly (number | null)[]
+}
+
+/** The whole universe's price history, keyed by ticker. */
+export interface PriceData {
+  /** ISO date the dataset was generated. */
+  readonly generatedAt: string
+  /** Shared, strictly ascending UTC timestamps for every series. */
+  readonly timestamps: readonly number[]
+  /** Series by ticker. Absent tickers simply have no history. */
+  readonly series: Readonly<Record<string, PriceSeries>>
 }
