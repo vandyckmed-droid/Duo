@@ -5,3 +5,7 @@
  * from `src/calculations` only, never from the individual modules.
  */
 export { calculateRawReturn } from './rawReturn.ts'
+export { calculateWindowReturn } from './windowReturn.ts'
+export { calculateTrailingTwelveMonthReturn } from './trailingTwelveMonthReturn.ts'
+export { calculateTwelveMonthReturns } from './twelveMonthReturns.ts'
+export type { TwelveMonthReturn } from './twelveMonthReturns.ts'
