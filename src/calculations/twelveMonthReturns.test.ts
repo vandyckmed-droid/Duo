@@ -55,4 +55,40 @@ describe('calculateTwelveMonthReturns', () => {
       twelveMonthReturn: null,
     })
   })
+
+  it('isolates one stock with an unusable date instead of failing the whole ranking', () => {
+    const stocksWithBadDate: readonly Stock[] = [
+      ...STOCKS,
+      { ticker: 'BADDATE', name: 'Bad Date Co', logo: 'baddate.example' },
+    ]
+    const historyWithBadDate = {
+      ...HISTORY,
+      BADDATE: {
+        points: [
+          { date: '2025-08-01', adjustedClose: 100 },
+          { date: 'not-a-date', adjustedClose: 200 },
+        ],
+      },
+    }
+
+    const result = calculateTwelveMonthReturns(
+      stocksWithBadDate,
+      historyWithBadDate,
+    )
+
+    // Every other stock still ranks normally.
+    expect(result.map((r) => r.ticker)).toEqual([
+      'UP',
+      'FLAT',
+      'DOWN',
+      'NODATA',
+      'BADDATE',
+    ])
+    expect(result.find((r) => r.ticker === 'BADDATE')?.twelveMonthReturn).toBe(
+      null,
+    )
+    expect(result.find((r) => r.ticker === 'UP')?.twelveMonthReturn).toBeCloseTo(
+      1,
+    )
+  })
 })
