@@ -1,4 +1,5 @@
 import type { PricePoint } from '../data/types.ts'
+import { isValidPricePoint } from './pricePointValidity.ts'
 import { calculateRawReturn } from './rawReturn.ts'
 
 /**
@@ -18,16 +19,12 @@ import { calculateRawReturn } from './rawReturn.ts'
 export function calculateWindowReturn(
   points: readonly PricePoint[],
 ): number | null {
-  const first = points.find(isValidPoint)
-  const last = points.findLast(isValidPoint)
+  const first = points.find(isValidPricePoint)
+  const last = points.findLast(isValidPricePoint)
 
   if (!first || !last || first === last) {
     return null
   }
 
   return calculateRawReturn(first.adjustedClose, last.adjustedClose)
-}
-
-function isValidPoint(point: PricePoint): boolean {
-  return Number.isFinite(point.adjustedClose) && point.adjustedClose > 0
 }

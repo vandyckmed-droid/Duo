@@ -1,5 +1,5 @@
 import type { Stock, StockPriceHistory } from '../data/types.ts'
-import { calculateWindowReturn } from './windowReturn.ts'
+import { calculateTrailingTwelveMonthReturn } from './trailingTwelveMonthReturn.ts'
 
 /** A stock's ticker paired with its 12M raw return. */
 export interface TwelveMonthReturn {
@@ -8,7 +8,10 @@ export interface TwelveMonthReturn {
 }
 
 /**
- * 12M raw return for each given stock, derived from its price history.
+ * True trailing 12-calendar-month raw return for each given stock, anchored
+ * to the latest valid price in its history (see
+ * `calculateTrailingTwelveMonthReturn`) — not simply the return across
+ * whatever history happens to be supplied.
  *
  * Takes the stock list and price history as arguments rather than importing
  * the dataset directly, so it works for the current 10-stock universe, a
@@ -24,7 +27,7 @@ export function calculateTwelveMonthReturns(
 ): readonly TwelveMonthReturn[] {
   const returns = stocks.map((stock) => ({
     ticker: stock.ticker,
-    twelveMonthReturn: calculateWindowReturn(
+    twelveMonthReturn: calculateTrailingTwelveMonthReturn(
       priceHistory[stock.ticker]?.points ?? [],
     ),
   }))
