@@ -82,4 +82,48 @@ describe('calculateTrailingTwelveMonthReturn', () => {
   it('returns null for an empty window', () => {
     expect(calculateTrailingTwelveMonthReturn([])).toBeNull()
   })
+
+  describe('date handling', () => {
+    const ascending = [
+      point('2024-01-15', 100),
+      point('2024-06-01', 120),
+      point('2025-01-15', 150),
+    ]
+
+    it('gives the same answer regardless of how the caller ordered points', () => {
+      const descending = [...ascending].reverse()
+      const unsorted = [ascending[1], ascending[2], ascending[0]]
+
+      expect(calculateTrailingTwelveMonthReturn(ascending)).toBeCloseTo(0.5)
+      expect(calculateTrailingTwelveMonthReturn(descending)).toBeCloseTo(0.5)
+      expect(calculateTrailingTwelveMonthReturn(unsorted)).toBeCloseTo(0.5)
+    })
+
+    it('accepts full ISO datetimes, not just bare dates', () => {
+      const points = [
+        point('2024-01-15T00:00:00Z', 100),
+        point('2025-01-15T00:00:00Z', 150),
+      ]
+      expect(calculateTrailingTwelveMonthReturn(points)).toBeCloseTo(0.5)
+    })
+
+    it.each([
+      ['unparseable text', 'not-a-date'],
+      ['an empty string', ''],
+      ['an impossible calendar day', '2023-02-30'],
+      ['an out-of-range month', '2023-13-01'],
+    ])('skips a point dated with %s instead of throwing', (_label, date) => {
+      const points = [
+        point('2024-01-15', 100),
+        point(date, 999), // unusable date — must be skipped, not crash
+        point('2025-01-15', 150),
+      ]
+      expect(calculateTrailingTwelveMonthReturn(points)).toBeCloseTo(0.5)
+    })
+
+    it('returns null rather than throwing when the newest date is unusable', () => {
+      const points = [point('2024-01-15', 100), point('garbage', 150)]
+      expect(calculateTrailingTwelveMonthReturn(points)).toBeNull()
+    })
+  })
 })
