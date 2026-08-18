@@ -21,3 +21,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+      # GitHub Pages serves the committed docs/ directory, so a build that
+      # succeeds against stale committed output is still a broken deploy.
+      - run: git diff --exit-code docs
