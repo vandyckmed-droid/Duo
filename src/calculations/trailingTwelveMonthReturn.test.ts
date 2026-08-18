@@ -59,6 +59,16 @@ describe('calculateTrailingTwelveMonthReturn', () => {
     expect(calculateTrailingTwelveMonthReturn(points)).toBeCloseTo(0.5)
   })
 
+  it('clamps a 29 February endpoint to 28 February of the prior year, not 1 March', () => {
+    const points = [
+      point('2023-02-28', 100), // the correct 12-month starting observation
+      point('2023-03-01', 110), // must NOT be used — that would mean the
+      //                           anniversary rolled forward past Feb 28
+      point('2024-02-29', 150), // 2024 is a leap year
+    ]
+    expect(calculateTrailingTwelveMonthReturn(points)).toBeCloseTo(0.5)
+  })
+
   it('returns null when there is no valid point at all', () => {
     const points = [point('2024-01-15', NaN), point('2025-01-15', -1)]
     expect(calculateTrailingTwelveMonthReturn(points)).toBeNull()

@@ -45,16 +45,25 @@ export function calculateTrailingTwelveMonthReturn(
  * Subtracts exactly 12 calendar months from an ISO 8601 date (YYYY-MM-DD),
  * returning the result in the same format.
  *
+ * 12 months is always the same calendar month one year earlier, so the only
+ * way the day-of-month can be invalid there is 29 February in a leap year —
+ * the prior year's February may only have 28 days. That day is clamped to
+ * the target month's last day (28 February) rather than left to `Date.UTC`,
+ * which would silently normalize it forward into March.
+ *
  * Computed in UTC so the calendar date isn't shifted by the host machine's
- * local timezone. `Date.UTC` normalizes an out-of-range day (e.g. the
- * 29th–31st landing in a shorter target month) by rolling into the
- * following month, which is an acceptable, well-defined resolution for the
- * rare date this can affect.
+ * local timezone.
  */
 function subtractTwelveCalendarMonths(isoDate: string): string {
   const date = new Date(`${isoDate}T00:00:00.000Z`)
-  const anniversary = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - 12, date.getUTCDate()),
-  )
-  return anniversary.toISOString().slice(0, 10)
+  const targetYear = date.getUTCFullYear() - 1
+  const targetMonth = date.getUTCMonth()
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(targetYear, targetMonth + 1, 0),
+  ).getUTCDate()
+  const day = Math.min(date.getUTCDate(), lastDayOfTargetMonth)
+
+  return new Date(Date.UTC(targetYear, targetMonth, day))
+    .toISOString()
+    .slice(0, 10)
 }
