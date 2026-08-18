@@ -25,9 +25,9 @@ export interface Stock {
   readonly logo: LogoRef
 }
 
-/** A single observation of a stock's adjusted price. */
+/** A single dated point in a stock's adjusted price series. */
 export interface PricePoint {
-  /** ISO 8601 calendar date (YYYY-MM-DD) of the observation. */
+  /** ISO 8601 calendar date (YYYY-MM-DD) the price is anchored to. */
   readonly date: string
   /** Split- and dividend-adjusted close, in the stock's listing currency. */
   readonly adjustedClose: number
@@ -39,8 +39,11 @@ export interface PricePoint {
  * `points` are ordered oldest to newest and span at least 12 months, which is
  * what a 12M raw return needs. Consumers derive returns from these points;
  * no computed return is stored.
+ *
+ * The stock this belongs to is carried by the key of the record holding it, so
+ * the history itself does not repeat the ticker — there is nothing that can
+ * disagree with the key.
  */
 export interface StockPriceHistory {
-  readonly ticker: string
   readonly points: readonly PricePoint[]
 }

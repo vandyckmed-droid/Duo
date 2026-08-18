@@ -4,17 +4,22 @@ import type { StockPriceHistory } from './types.ts'
 /**
  * Adjusted price history for every stock in the universe.
  *
- * Placeholder data: month-end adjusted closes covering the trailing 12 months,
- * the minimum needed to derive a 12M raw return. Points are explicit
- * date/price pairs rather than a shared date grid, so a per-ticker feed can
- * replace them one ticker at a time without changing the shape.
+ * SYNTHETIC PLACEHOLDER DATA — none of this is observed market data. The dates
+ * are monthly anchors on the first of each month, not trading days: several
+ * fall on weekends or holidays, when no close exists. The values are invented
+ * figures chosen to look plausible, not real prices. Both are here only to give
+ * the shape something to hold until a real price source replaces them.
+ *
+ * What is real is the span: 13 anchors covering 12 months, the minimum a 12M
+ * raw return needs. Points are explicit date/price pairs rather than a shared
+ * date grid, so a per-ticker feed can replace them one ticker at a time without
+ * changing the shape.
  *
  * Typed as a total record over `StockTicker`, so adding a stock to `STOCKS`
  * without adding its history is a compile error.
  */
 export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
   AAPL: {
-    ticker: 'AAPL',
     points: [
       { date: '2025-08-01', adjustedClose: 224.50 },
       { date: '2025-09-01', adjustedClose: 229.80 },
@@ -32,7 +37,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   MSFT: {
-    ticker: 'MSFT',
     points: [
       { date: '2025-08-01', adjustedClose: 415.20 },
       { date: '2025-09-01', adjustedClose: 421.65 },
@@ -50,7 +54,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   NVDA: {
-    ticker: 'NVDA',
     points: [
       { date: '2025-08-01', adjustedClose: 118.30 },
       { date: '2025-09-01', adjustedClose: 126.45 },
@@ -68,7 +71,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   AMZN: {
-    ticker: 'AMZN',
     points: [
       { date: '2025-08-01', adjustedClose: 178.60 },
       { date: '2025-09-01', adjustedClose: 184.25 },
@@ -86,7 +88,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   GOOGL: {
-    ticker: 'GOOGL',
     points: [
       { date: '2025-08-01', adjustedClose: 162.80 },
       { date: '2025-09-01', adjustedClose: 168.35 },
@@ -104,7 +105,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   META: {
-    ticker: 'META',
     points: [
       { date: '2025-08-01', adjustedClose: 522.40 },
       { date: '2025-09-01', adjustedClose: 538.75 },
@@ -122,7 +122,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   TSLA: {
-    ticker: 'TSLA',
     points: [
       { date: '2025-08-01', adjustedClose: 214.10 },
       { date: '2025-09-01', adjustedClose: 226.85 },
@@ -140,7 +139,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   JPM: {
-    ticker: 'JPM',
     points: [
       { date: '2025-08-01', adjustedClose: 218.70 },
       { date: '2025-09-01', adjustedClose: 224.15 },
@@ -158,7 +156,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   XOM: {
-    ticker: 'XOM',
     points: [
       { date: '2025-08-01', adjustedClose: 114.20 },
       { date: '2025-09-01', adjustedClose: 111.85 },
@@ -176,7 +173,6 @@ export const PRICE_HISTORY: Readonly<Record<StockTicker, StockPriceHistory>> = {
     ],
   },
   WMT: {
-    ticker: 'WMT',
     points: [
       { date: '2025-08-01', adjustedClose: 68.40 },
       { date: '2025-09-01', adjustedClose: 71.25 },
