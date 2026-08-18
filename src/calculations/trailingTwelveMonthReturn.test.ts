@@ -125,5 +125,19 @@ describe('calculateTrailingTwelveMonthReturn', () => {
       const points = [point('2024-01-15', 100), point('garbage', 150)]
       expect(calculateTrailingTwelveMonthReturn(points)).toBeNull()
     })
+
+    it.each([
+      ['the start date', [point('2024-01-15', 100), point('2024-01-15', 10), point('2025-01-15', 150)]],
+      ['the end date', [point('2024-01-15', 100), point('2025-01-15', 150), point('2025-01-15', 300)]],
+    ])(
+      'stays order-independent when two points share %s',
+      (_label, points) => {
+        // Duplicate dates are a data defect; the guarantee is only that the
+        // answer does not change with the ordering of the input.
+        expect(calculateTrailingTwelveMonthReturn(points)).toBe(
+          calculateTrailingTwelveMonthReturn([...points].reverse()),
+        )
+      },
+    )
   })
 })

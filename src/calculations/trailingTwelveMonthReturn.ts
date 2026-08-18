@@ -23,7 +23,8 @@ import { calculateRawReturn } from './rawReturn.ts'
  * Endpoints are chosen by comparing dates, not by array position, so the
  * result does not depend on how the caller ordered `points` — oldest-first,
  * newest-first (as several price APIs return) and unsorted all yield the
- * same answer.
+ * same answer. That holds even when two points share a date; see `latest`
+ * for how such a tie is settled.
  *
  * Returns `null` when there is no usable point, or none at or before the
  * anniversary — i.e. less than 12 months of usable history.
@@ -51,17 +52,30 @@ export function calculateTrailingTwelveMonthReturn(
   return calculateRawReturn(start.adjustedClose, end.adjustedClose)
 }
 
-/** The observation with the latest timestamp, or `null` if there are none. */
+/**
+ * The observation with the latest timestamp, or `null` if there are none.
+ *
+ * Two observations sharing a date is a defect in the source data — a price
+ * series should carry one close per day. Rather than let array position
+ * decide (which would make the result depend on input ordering again, the
+ * very thing this module avoids), ties are broken by price. The rule is
+ * arbitrary; being a rule at all is the point, since it makes the outcome a
+ * function of the observations themselves.
+ */
 function latest(
   observations: readonly PriceObservation[],
 ): PriceObservation | null {
   return observations.reduce<PriceObservation | null>(
     (newest, observation) =>
-      newest === null || observation.timestamp > newest.timestamp
-        ? observation
-        : newest,
+      newest === null || isLater(observation, newest) ? observation : newest,
     null,
   )
+}
+
+function isLater(a: PriceObservation, b: PriceObservation): boolean {
+  return a.timestamp === b.timestamp
+    ? a.adjustedClose > b.adjustedClose
+    : a.timestamp > b.timestamp
 }
 
 /**

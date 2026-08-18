@@ -36,9 +36,13 @@ export interface PricePoint {
 /**
  * Adjusted price history for one stock.
  *
- * `points` are ordered oldest to newest and span at least 12 months, which is
- * what a 12M raw return needs. Consumers derive returns from these points;
- * no computed return is stored.
+ * `points` span at least 12 months, which is what a 12M raw return needs.
+ * Consumers derive returns from these points; no computed return is stored.
+ *
+ * This dataset happens to list points oldest to newest, but that is a
+ * property of the data, not a contract: the calculation layer selects
+ * points by comparing their dates, never by position, so a feed that
+ * returns newest-first needs no reordering.
  *
  * The stock this belongs to is carried by the key of the record holding it, so
  * the history itself does not repeat the ticker — there is nothing that can
