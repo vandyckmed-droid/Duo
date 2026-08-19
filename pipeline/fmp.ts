@@ -313,6 +313,37 @@ export class Fmp {
   }
 
   /**
+   * Every announcement in a date range, market-wide, via the earnings
+   * calendar. One ranged request replaces ~1,500 per-symbol ones for the
+   * production refresh; symbols outside the universe are filtered by the
+   * caller. Kept to short ranges — the endpoint caps its row count.
+   */
+  async earningsCalendar(
+    from: string,
+    to: string,
+  ): Promise<(EarningsEvent & { symbol: string })[]> {
+    const body = await this.get('earnings-calendar', { from, to })
+    if (!Array.isArray(body)) throw new FmpError('earnings-calendar: unexpected payload')
+    const out: (EarningsEvent & { symbol: string })[] = []
+    for (const row of body) {
+      if (!row || typeof row !== 'object') continue
+      const r = row as Record<string, unknown>
+      const symbol = str(r['symbol'])
+      const date = String(r['date'] ?? '').slice(0, 10)
+      if (!symbol || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+      out.push({
+        symbol: symbol.trim().toUpperCase(),
+        date,
+        epsActual: num(r['epsActual']),
+        epsEstimated: num(r['epsEstimated']),
+        revenueActual: num(r['revenueActual']),
+        revenueEstimated: num(r['revenueEstimated']),
+      })
+    }
+    return out
+  }
+
+  /**
    * Earnings announcements for one symbol, oldest first. One announcement per
    * date — the provider occasionally repeats a row, and keeping the last
    * occurrence matches how it orders corrections.

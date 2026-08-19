@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { agreement, groupPercentiles, meanPercentile, percentiles } from './crossSection.ts'
-import { alphaComponents, compositeScore } from './alpha.ts'
-import type { SecurityRecord } from './dataset.ts'
+import { compositeScore } from './alpha.ts'
 
 describe('percentiles', () => {
   it('gives the best value 1 and the worst 0 for desc', () => {
@@ -131,96 +130,6 @@ describe('groupPercentiles', () => {
     // popped's median is 0.05 despite the 900% member, so steady leads.
     expect(p.get('a1')).toBe(1)
     expect(p.get('b1')).toBe(0)
-  })
-})
-
-/** A minimal record with everything the alpha composite reads. */
-function record(
-  ticker: string,
-  overrides: {
-    returns?: Partial<Record<'12-1' | '6-1' | '3M' | '12M', number | null>>
-    residual12M?: number | null
-    path?: Partial<NonNullable<SecurityRecord['path']>>
-    sector?: string
-    industry?: string
-  } = {},
-): SecurityRecord {
-  return {
-    ticker,
-    name: ticker,
-    segment: '500',
-    benchmark: 'SPY',
-    sector: overrides.sector ?? 'Tech',
-    industry: overrides.industry ?? 'Software',
-    marketCap: 1e9,
-    returns: { '12-1': 0.1, '6-1': 0.05, '3M': 0.02, '12M': 0.12, ...overrides.returns },
-    residuals: { '12M': overrides.residual12M ?? 0.05 },
-    volatility: { '1Y': 0.2 },
-    returnPerVol: 0.5,
-    maxDrawdown: -0.1,
-    beta: 1,
-    betaR2: 0.5,
-    betaObservations: 700,
-    last: 100,
-    lastDate: '2026-08-18',
-    low52: 80,
-    high52: 110,
-    path: {
-      positiveDayShare: 0.55,
-      top5Share: 0.2,
-      closeToHigh: 0.95,
-      timeNearHigh: 0.5,
-      downsideDeviation: 0.15,
-      ...overrides.path,
-    },
-    history: { days: 800, from: '2023-01-01', to: '2026-08-18' },
-    prior: { returns: {}, residuals: {}, volatility: {}, returnPerVol: null, marketCap: null },
-  } as SecurityRecord
-}
-
-describe('alphaComponents', () => {
-  it('scores a uniformly strong name above a uniformly weak one', () => {
-    const universe = [
-      record('WIN', {
-        returns: { '12-1': 0.8, '6-1': 0.4, '3M': 0.2, '12M': 0.9 },
-        residual12M: 0.4,
-        path: { positiveDayShare: 0.6, top5Share: 0.1, closeToHigh: 1, timeNearHigh: 0.9 },
-      }),
-      record('MID', {}),
-      record('LOSE', {
-        returns: { '12-1': -0.3, '6-1': -0.2, '3M': -0.1, '12M': -0.35 },
-        residual12M: -0.2,
-        path: { positiveDayShare: 0.4, top5Share: 0.9, closeToHigh: 0.5, timeNearHigh: 0 },
-      }),
-    ]
-    const c = alphaComponents(universe)
-    const win = c.get('WIN')
-    const lose = c.get('LOSE')
-    expect(win?.score).not.toBeNull()
-    expect(lose?.score).not.toBeNull()
-    expect(win?.score as number).toBeGreaterThan(c.get('MID')?.score as number)
-    expect(c.get('MID')?.score as number).toBeGreaterThan(lose?.score as number)
-    expect(win?.agreement).toEqual({ count: 4, of: 4 })
-    expect(lose?.agreement).toEqual({ count: 0, of: 4 })
-  })
-
-  it('unbuilt families are explicitly null, never zero', () => {
-    const c = alphaComponents([record('A'), record('B'), record('C')])
-    const a = c.get('A')
-    expect(a?.families.fundamental).toBeNull()
-    expect(a?.families.quality).toBeNull()
-  })
-
-  it('a name missing its price horizons gets no price family, not a bad one', () => {
-    const universe = [
-      record('NEW', { returns: { '12-1': null, '6-1': null, '3M': 0.5, '12M': null } }),
-      record('A'),
-      record('B'),
-      record('C'),
-    ]
-    const c = alphaComponents(universe)
-    // One horizon of three is below the 2-of-3 floor.
-    expect(c.get('NEW')?.families.price).toBeNull()
   })
 })
 

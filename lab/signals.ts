@@ -13,8 +13,8 @@ import {
 } from '../src/engine/index.ts'
 import type { EarningsEvent } from '../pipeline/fmp.ts'
 import { BETA_LOOKBACK, WINDOWS } from '../src/domain/windows.ts'
-import { FAMILY_WEIGHTS, compositeScore } from '../src/domain/alpha.ts'
-import { groupPercentiles, meanPercentile, percentiles } from '../src/domain/crossSection.ts'
+import { FAMILY_WEIGHTS, compositeScore } from './alpha.ts'
+import { groupPercentiles, meanPercentile, percentiles } from './crossSection.ts'
 
 /**
  * The signal roster under test.

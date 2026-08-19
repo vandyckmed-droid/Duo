@@ -293,6 +293,73 @@ function path(days: number, dailyRate: number, start = 100): PricePoint[] {
   return out
 }
 
+describe('computeSecurity earnings', () => {
+  const benchmarkPoints = path(900, 0.0004)
+  const stockPoints = path(900, 0.0009)
+  const benchmarks = new Map([
+    ['SPY', benchmarkPoints],
+    ['IJH', benchmarkPoints],
+    ['IJR', benchmarkPoints],
+  ])
+  const aligned = alignToCalendar(benchmarks, new Map([['AAA', stockPoints]]))
+  const context = {
+    calendar: aligned.calendar,
+    benchmarks: new Map(
+      ['SPY', 'IJH', 'IJR'].map((t) => [t, aligned.closes.get(t) ?? []] as const),
+    ),
+  }
+  const compute = (earnings: { date: string; epsActual: number | null; epsEstimated: number | null; revenueActual: null; revenueEstimated: null }[]) =>
+    computeSecurity(
+      {
+        member: { ticker: 'AAA', name: 'Alpha Inc.', sector: 'T', industry: 'S', segment: '500' as const },
+        closes: aligned.closes.get('AAA') ?? [],
+        marketCap: 1e9,
+        priorMarketCap: 9e8,
+        stale: false,
+        earnings,
+      },
+      context,
+    ) as SecurityRecord
+
+  const ev = (date: string, actual: number | null = 1.5, est: number | null = 1.2) => ({
+    date,
+    epsActual: actual,
+    epsEstimated: est,
+    revenueActual: null as null,
+    revenueEstimated: null as null,
+  })
+
+  it('publishes the latest recent announcement with a price-scaled surprise', () => {
+    const anchor = aligned.calendar.length - 1
+    const date = aligned.calendar[anchor - 10] as string
+    const record = compute([ev(aligned.calendar[anchor - 200] as string), ev(date)])
+    expect(record.earnings?.date).toBe(date)
+    const price = (aligned.closes.get('AAA') ?? [])[anchor - 10] as number
+    expect(record.earnings?.surprise).toBeCloseTo(0.3 / price, 12)
+    expect(record.earnings?.sinceReturn).not.toBeNull()
+  })
+
+  it('publishes nothing when the latest announcement is stale', () => {
+    const anchor = aligned.calendar.length - 1
+    const record = compute([ev(aligned.calendar[anchor - 100] as string)])
+    expect(record.earnings).toBeUndefined()
+  })
+
+  it('never uses an announcement dated after the as-of date', () => {
+    const future = '2099-01-01'
+    const record = compute([ev(future)])
+    expect(record.earnings).toBeUndefined()
+  })
+
+  it('a missing estimate leaves the surprise null but publishes the facts', () => {
+    const anchor = aligned.calendar.length - 1
+    const date = aligned.calendar[anchor - 5] as string
+    const record = compute([ev(date, 1.5, null)])
+    expect(record.earnings?.date).toBe(date)
+    expect(record.earnings?.surprise).toBeNull()
+  })
+})
+
 describe('computeSecurity', () => {
   const benchmarkPoints = path(900, 0.0004)
   const stockPoints = path(900, 0.0009)

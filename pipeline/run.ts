@@ -9,10 +9,18 @@ import {
   type Member,
 } from './membership.ts'
 import { alignToCalendar, computeUniverse, type ComputeInput } from './compute.ts'
-import { lastValidIndex, observationCount } from '../src/engine/index.ts'
+import { refreshEarningsStore } from './earnings.ts'
+import {
+  distanceFromHigh,
+  lastValidIndex,
+  observationCount,
+  valueOrNull,
+  windowReturn,
+} from '../src/engine/index.ts'
 import { hasErrors, validate } from './validate.ts'
 import { publish } from './publish.ts'
 import { DATASET_VERSION, type Manifest } from '../src/domain/dataset.ts'
+import { classifyRegime, type MarketRegime } from '../src/domain/regime.ts'
 import { BENCHMARK_TICKERS, SEGMENTS, type Segment } from '../src/domain/segments.ts'
 import {
   BETA_LOOKBACK,
@@ -40,6 +48,7 @@ import {
 
 const ROOT = resolve(import.meta.dirname, '..')
 const CACHE_DIR = process.env['DUO_CACHE_DIR'] ?? resolve(ROOT, '.cache/prices')
+const EARNINGS_STORE = process.env['DUO_EARNINGS_STORE'] ?? resolve(ROOT, '.cache/earnings/calendar.json')
 const OUTPUT_DIR = process.env['DUO_OUTPUT_DIR'] ?? resolve(ROOT, 'public/data')
 
 /** Calendar days of history to request, sized from the longest window used. */
@@ -47,6 +56,23 @@ const HISTORY_CALENDAR_DAYS = Math.ceil((HISTORY_TRADING_DAYS / 252) * 365) + 45
 
 function log(message: string): void {
   console.log(message)
+}
+
+/**
+ * The market momentum regime at the anchor, from the broad-market benchmark.
+ * Absent rather than guessed when SPY's history cannot support the inputs.
+ */
+function marketRegime(
+  spy: (number | null)[],
+  anchor: number,
+): { market: MarketRegime } | Record<string, never> {
+  const fromHigh = valueOrNull(distanceFromHigh(spy, 252, anchor))
+  const return6M = valueOrNull(windowReturn(spy, { formation: 126, skip: 0 }, anchor))
+  const return1M = valueOrNull(windowReturn(spy, { formation: 21, skip: 0 }, anchor))
+  if (fromHigh === null || return6M === null || return1M === null) return {}
+  return {
+    market: { state: classifyRegime(fromHigh, return6M, return1M), fromHigh, return6M, return1M },
+  }
 }
 
 async function main(): Promise<void> {
@@ -97,6 +123,10 @@ async function main(): Promise<void> {
   const failed = [...outcomes.values()].filter((o) => o.error)
   log(`  ${added} new observations; ${failed.length} tickers kept from cache after a failed request`)
   for (const f of failed.slice(0, 10)) log(`    ${f.ticker}: ${f.error}`)
+
+  log('Refreshing the earnings calendar…')
+  const earningsStore = await refreshEarningsStore(EARNINGS_STORE, fmp, to, log)
+  log(`  ${Object.keys(earningsStore.bySymbol).length} symbols with recent announcements`)
 
   log('Loading cached history…')
   const benchmarkPoints = new Map<string, PricePoint[]>()
@@ -159,6 +189,9 @@ async function main(): Promise<void> {
       aligned.closes.get(member.ticker) ?? [],
     ),
     stale: outcomes.get(member.ticker)?.stale ?? false,
+    ...(earningsStore.bySymbol[member.ticker]
+      ? { earnings: earningsStore.bySymbol[member.ticker] }
+      : {}),
   }))
 
   const computed = computeUniverse(inputs, { calendar: aligned.calendar, benchmarks })
@@ -185,6 +218,7 @@ async function main(): Promise<void> {
     betaLookback: BETA_LOOKBACK,
     rankChangeOffset: RANK_CHANGE_OFFSET,
     excluded: [...excluded, ...computed.excluded],
+    ...marketRegime(aligned.closes.get('SPY') ?? [], anchor),
   }
 
   log('Validating…')

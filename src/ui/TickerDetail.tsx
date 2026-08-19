@@ -228,6 +228,37 @@ export function TickerDetail({
           />
         </Section>
 
+        {security.earnings && (
+          <Section title="Latest earnings">
+            <Stat label="Announced" value={isoToDisplay(security.earnings.date)} />
+            <Stat
+              label="EPS"
+              hint="Actual vs consensus at announcement"
+              value={
+                security.earnings.epsActual === null
+                  ? EMPTY
+                  : `${security.earnings.epsActual.toFixed(2)} vs ${
+                      security.earnings.epsEstimated === null
+                        ? EMPTY
+                        : security.earnings.epsEstimated.toFixed(2)
+                    }`
+              }
+            />
+            <Stat
+              label="Surprise"
+              hint="Actual − estimate, as a share of the announcement-day price"
+              value={percent(security.earnings.surprise, 2)}
+              tone={security.earnings.surprise}
+            />
+            <Stat
+              label="Since announcement"
+              hint="Return from the announcement’s trading day to the as-of date"
+              value={percent(security.earnings.sinceReturn)}
+              tone={security.earnings.sinceReturn}
+            />
+          </Section>
+        )}
+
         <Section title="52-week range">
           <div className="range">
             {rangePosition === null ? (

@@ -294,3 +294,30 @@ Schema per entry:
   surprise does not.
 - **Decision**: keep in lab, deprioritised. The surprise, not the
   reaction, is the fundamental family's anchor.
+
+---
+
+## Integration record — 2026-08-19
+
+Owner directive: simplify to a practical, ready-to-use version; keep the
+research results and history for reference; drop the rest.
+
+**Integrated into the app** (V2 branch, first user-visible build):
+
+- **Market regime line** on the ranked list (from R-011/R-014 evidence):
+  normal / caution / reversal-risk from the pre-registered thresholds,
+  computed in the pipeline from SPY and published in the manifest. Context
+  only — no ranking or exposure change, inputs published so the statement
+  is checkable.
+- **EPS surprise metric** (`SUE`, from R-017) in the metric registry —
+  selectable like any metric, not the default — plus a "Latest earnings"
+  section on the ticker detail (announcement date, actual vs estimate,
+  surprise, return since). Production ingestion via the ranged earnings
+  calendar (2 short requests per daily run), frozen-once per announcement,
+  220-day retention.
+
+**Removed from the product surface** (kept in git history and, where the
+Lab uses them, moved to lab/): the price-only composite (failed R-010),
+the cross-sectional module, per-security path facts (failed/weak
+R-005…R-008), and the one-shot tag/probe workflows. The Lab, this
+registry, and the data docs remain as the reference record.

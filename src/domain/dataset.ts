@@ -1,4 +1,5 @@
 import type { Segment } from './segments.ts'
+import type { MarketRegime } from './regime.ts'
 import type { VolatilityWindowId, WindowId } from './windows.ts'
 
 /**
@@ -51,25 +52,18 @@ export interface SecurityRecord {
   readonly high52: number | null
 
   /**
-   * V2 path-quality facts (optional — absent in V1 datasets, so a V1 client
-   * reading a V2 file and a V2 client reading a V1 file both keep working).
-   *
-   * These are per-security facts like everything else in this record; the
-   * cross-sectional scores built from them (percentiles, agreement, Alpha
-   * Score) are computed in the interface, where "a rank always means position
-   * within the list you are looking at".
+   * The latest earnings announcement within the last 63 trading days
+   * (optional — absent when there is none, or in older datasets).
+   * `surprise` is actual minus estimated EPS as a share of the
+   * announcement-day close; `sinceReturn` is the return from the
+   * announcement's trading day to the as-of date.
    */
-  readonly path?: {
-    /** Share of the trailing 252 trading days that closed up. */
-    readonly positiveDayShare: number | null
-    /** Share of the trailing year's log return earned on its 5 best days. */
-    readonly top5Share: number | null
-    /** Last price / trailing-252-day high, in (0, 1]. */
-    readonly closeToHigh: number | null
-    /** Share of the last 63 days spent within 5% of the running 252d high. */
-    readonly timeNearHigh: number | null
-    /** Annualised standard deviation of negative daily returns, 252d. */
-    readonly downsideDeviation: number | null
+  readonly earnings?: {
+    readonly date: string
+    readonly epsActual: number | null
+    readonly epsEstimated: number | null
+    readonly surprise: number | null
+    readonly sinceReturn: number | null
   }
 
   /** Usable observations held for this security, and their span. */
@@ -116,6 +110,12 @@ export interface Manifest {
   readonly rankChangeOffset: number
   /** Names dropped this run and why, so thin coverage is explainable. */
   readonly excluded: readonly { ticker: string; reason: string }[]
+  /**
+   * The market momentum regime at the dataset's as-of date (optional —
+   * absent in older datasets, and either side of the contract works
+   * without the other).
+   */
+  readonly market?: MarketRegime
 }
 
 export interface UniverseFile {

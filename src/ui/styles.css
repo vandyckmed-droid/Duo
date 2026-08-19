@@ -639,6 +639,18 @@ button {
 .bar-value { flex: 0 0 60px; text-align: right; font-weight: 620; }
 .bar-note { flex: 0 0 66px; text-align: right; font-size: 11px; color: var(--text-faint); }
 
+/* The market-regime line: one factual clause under the controls. Normal is
+   deliberately faint — the state worth noticing is the exception. */
+.regime {
+  margin: 0;
+  padding: 6px var(--pad) 8px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.regime-normal { color: var(--text-faint); }
+.regime-caution { color: var(--warn); }
+.regime-reversal-risk { color: var(--down); }
+
 .notice {
   margin: 12px var(--pad);
   padding: 11px 13px;

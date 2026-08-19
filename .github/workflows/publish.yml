@@ -69,7 +69,9 @@ jobs:
       - name: Restore the adjusted-price cache
         uses: actions/cache@v4
         with:
-          path: .cache/prices
+          path: |
+            .cache/prices
+            .cache/earnings
           key: duo-prices-${{ github.run_id }}
           restore-keys: |
             duo-prices-
