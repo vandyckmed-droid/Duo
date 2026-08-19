@@ -1,0 +1,148 @@
+name: Refresh and publish
+
+# The only workflow that sees the API key.
+#
+#   membership → incremental price cache → calculation engine → validation →
+#   atomic publish → GitHub Pages
+#
+# The refresh is incremental: the price cache is restored, only the days after
+# each ticker's last cached close are requested, and a ticker whose request
+# fails keeps the history it already had. If validation fails, nothing is
+# published and the dataset already on Pages — the last one that passed — keeps
+# serving.
+
+on:
+  schedule:
+    # 09:00 UTC, Tuesday to Saturday: the previous session's closes have
+    # settled by then, and the pipeline only ever asks for settled days.
+    - cron: '0 9 * * 2-6'
+  workflow_dispatch:
+  push:
+    branches: [main]
+  # A change to the pipeline or the engine changes the dataset. Running the
+  # whole refresh on such a pull request proves it still works before it
+  # reaches the schedule, where a break would go unnoticed until the site went
+  # stale. Deployment stays gated to the default branch, so this validates
+  # without publishing.
+  pull_request:
+    paths:
+      - 'pipeline/**'
+      - 'src/engine/**'
+      - 'src/domain/**'
+      - '.github/workflows/publish.yml'
+      - 'package.json'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # A pull request from a fork has no access to the secret, so the refresh
+    # could only fail. Skipped rather than failed: there is nothing wrong with
+    # the contribution.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Test the calculation engine
+        run: npm run test
+
+      # Restored by prefix, so a run picks up the most recent cache even though
+      # every run writes a new key. A miss is not a failure — it costs one full
+      # three-year fetch and the run continues.
+      - name: Restore the adjusted-price cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/prices
+          key: duo-prices-${{ github.run_id }}
+          restore-keys: |
+            duo-prices-
+
+      - name: Refresh the dataset
+        env:
+          # The credential is configured under one of these two names. Passing
+          # both lets the pipeline take whichever exists rather than making a
+          # working secret depend on being renamed.
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: npm run refresh
+
+      - name: Build the site
+        run: npm run build
+
+      # The strongest check available here: the secret is in this job's
+      # environment, so the built site can be searched for the key itself
+      # rather than for things that merely resemble one. grep stays quiet, and
+      # the runner masks the value in logs regardless.
+      - name: Assert no credential reached the built site
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          for name in FMP_API_KEY API_KEY; do
+            value="${!name}"
+            [ -n "$value" ] || continue
+            if grep -rqI -- "$value" dist; then
+              echo "::error::The API key value appears in the built site."
+              exit 1
+            fi
+          done
+          if grep -rqI -E 'API_KEY|apikey=' dist/assets; then
+            echo "::error::A key reference leaked into the client bundle."
+            exit 1
+          fi
+          echo "No key value, key name, or apikey parameter in the built site."
+
+      - name: Summarise the run
+        run: |
+          {
+            echo "### Dataset"
+            echo
+            node -e '
+              const m = require("./dist/data/manifest.json");
+              console.log(`- **As of** ${m.asOf} · ${m.calendarDays} trading days`);
+              console.log(`- **Securities** ${m.counts.total} (500: ${m.counts["500"]}, 400: ${m.counts["400"]}, 600: ${m.counts["600"]})`);
+              for (const p of m.membership) console.log(`- **Segment ${p.segment}** membership via \`${p.source}\` → β vs ${m.benchmarks[p.segment]}`);
+              console.log(`- **Excluded** ${m.excluded.length}`);
+            '
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  # Deployment is restricted to the default branch: the `github-pages`
+  # environment only accepts deployments from it. Every other ref still runs
+  # the whole refresh and build above, so a branch proves the pipeline without
+  # being able to publish from it.
+  deploy:
+    needs: build
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        with:
+          # Switches the site to building from this workflow if it is still
+          # configured to serve a branch.
+          enablement: true
+      - id: deploy
+        uses: actions/deploy-pages@v4
