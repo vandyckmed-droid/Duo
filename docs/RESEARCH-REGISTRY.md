@@ -255,7 +255,24 @@ Schema per entry:
   are unmeasured, never defaulted. Announcements are used only from their
   announcement date (`earnings.date`), per docs/DATA-LIMITATIONS.md.
 - **Expected direction**: positive forward IC at 21/63d.
-- **Date registered**: 2026-08-19. **Result**: pending.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19 (Lab run 32242468106: 220 monthly dates,
+  2007-11→2026-02, 1,498 names).
+- **Result**: SUPPORTED — the first signal in the program with a
+  non-overlapping t-stat above 2: 21d IC +0.009 (t +2.3, n=220), positive
+  in 16 of 20 calendar years, top-decile turnover 27%. Most valuable
+  property: it is nearly regime-neutral (+0.012 in drawdown-normal,
+  −0.002 in drawdown-adverse) where the momentum family swings from +0.02
+  to −0.07 — genuinely orthogonal information. Decile spread is modest
+  (+0.14%/21d, monotonicity +0.35): a broad, shallow edge, not a
+  top-decile rocket.
+- **Decision**: advance to challenger as the first member of the
+  fundamental family. Before any production role: (1) the point-in-time
+  freeze on captured announcements is now in force (a cached row can never
+  be rewritten by a later provider restatement) — but rows captured today
+  for past years inherit whatever restatements the provider already made,
+  a caveat the forward record cures from here on; (2) needs cost-aware
+  evaluation and an ablation inside the composite.
 
 ## R-018 — Earnings announcement reaction
 
@@ -268,4 +285,12 @@ Schema per entry:
 - **Expected direction**: positive forward IC at 21/63d; expected to
   complement rather than duplicate R-017 (tested by their correlation and,
   if both survive, ablation).
-- **Date registered**: 2026-08-19. **Result**: pending.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19 (same run as R-017).
+- **Result**: weak — 21d IC +0.003 (t +0.9), negative decile spreads,
+  non-monotone curve. The market's two-day verdict carries far less
+  forward information than the surprise itself here, and it inherits mild
+  regime sensitivity (+0.008 normal / −0.016 drawdown-adverse) where the
+  surprise does not.
+- **Decision**: keep in lab, deprioritised. The surprise, not the
+  reaction, is the fundamental family's anchor.

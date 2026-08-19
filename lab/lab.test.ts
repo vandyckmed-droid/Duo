@@ -388,19 +388,21 @@ describe('earnings signals', () => {
 })
 
 describe('earnings cache', () => {
-  it('merges by date with fresh rows winning and history never lost', () => {
+  it('appends new dates but never rewrites a captured announcement', () => {
     const merged = mergeEvents(
       [
         { date: '2024-01-01', epsActual: 1, epsEstimated: 1, revenueActual: null, revenueEstimated: null },
-        { date: '2024-04-01', epsActual: null, epsEstimated: 1, revenueActual: null, revenueEstimated: null },
+        { date: '2024-04-01', epsActual: 2, epsEstimated: 1.5, revenueActual: null, revenueEstimated: null },
       ],
       [
-        { date: '2024-04-01', epsActual: 2, epsEstimated: 1, revenueActual: null, revenueEstimated: null },
+        // A restated estimate for an already-captured date must not win…
+        { date: '2024-04-01', epsActual: 2, epsEstimated: 1.9, revenueActual: null, revenueEstimated: null },
+        // …while a genuinely new announcement appends.
         { date: '2024-07-01', epsActual: 3, epsEstimated: 2, revenueActual: null, revenueEstimated: null },
       ],
     )
     expect(merged.map((e) => e.date)).toEqual(['2024-01-01', '2024-04-01', '2024-07-01'])
-    expect(merged[1]?.epsActual).toBe(2)
+    expect(merged[1]?.epsEstimated).toBe(1.5)
   })
 
   it('a failed request keeps the cached events', async () => {

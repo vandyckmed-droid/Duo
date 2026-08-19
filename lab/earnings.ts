@@ -49,14 +49,21 @@ export class EarningsCache {
   }
 }
 
-/** Merge by announcement date; fresh rows win, absent rows are kept. */
+/**
+ * Merge by announcement date — and the cached row wins for a date already
+ * held. This is the point-in-time freeze: what the provider said when we
+ * first captured an announcement is what was knowable then, and a later
+ * restatement of the estimate (or the actual) silently rewriting it would
+ * contaminate every backtest that touched the old value. New dates append;
+ * captured history is immutable.
+ */
 export function mergeEvents(
   cached: readonly EarningsEvent[],
   fetched: readonly EarningsEvent[],
 ): EarningsEvent[] {
   const byDate = new Map<string, EarningsEvent>()
-  for (const e of cached) byDate.set(e.date, e)
   for (const e of fetched) byDate.set(e.date, e)
+  for (const e of cached) byDate.set(e.date, e)
   return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 }
 
