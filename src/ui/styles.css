@@ -288,10 +288,9 @@ button {
   border-top: 1px solid var(--line);
 }
 
-.definition-clamped {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.definition-hint {
+  margin-left: 6px;
+  color: var(--text-faint);
 }
 
 /* ── Scroller and rows ─────────────────────────────────────────────────── */
