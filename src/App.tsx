@@ -14,7 +14,13 @@ import {
   metricHiddenWhenNarrow,
   rankValues,
 } from './metrics/index.ts'
+import { calculateInverseVolatilityWeights } from './portfolio/index.ts'
 import { SectorFilter } from './ui/SectorFilter.tsx'
+import {
+  readSelection,
+  toggleSelection,
+  writeSelection,
+} from './ui/selection.ts'
 import { StockRow } from './ui/StockRow.tsx'
 import { parseViewHash, viewHash } from './ui/viewState.ts'
 
@@ -32,6 +38,18 @@ export default function App() {
    * reloaded as seen, without pulling in a router for two values.
    */
   const [view, setView] = useState(() => parseViewHash(window.location.hash))
+  /**
+   * Selection is independent of the view: neither the metric nor the sector
+   * filter clears it, so it is its own state rather than derived from the
+   * ranking. Persisted separately from the view, which lives in the hash.
+   */
+  const [selection, setSelection] = useState(() =>
+    readSelection(window.localStorage),
+  )
+
+  useEffect(() => {
+    writeSelection(window.localStorage, selection)
+  }, [selection])
 
   useEffect(() => {
     let cancelled = false
@@ -71,6 +89,23 @@ export default function App() {
   )
 
   const hiddenWhenNarrowId = metricHiddenWhenNarrow(METRICS, activeMetric.id)
+
+  // Weighting reads volatility from the whole universe's values, not the
+  // filtered/sorted `ranked` list, so a selection's weights stay the same
+  // regardless of which sector or metric happens to be on screen.
+  const weightByTicker = useMemo(() => {
+    const selected = values.filter((v) => selection.has(v.stock.ticker))
+    const weights = calculateInverseVolatilityWeights(
+      selected.map((v) => ({
+        ticker: v.stock.ticker,
+        volatility: v.values.volatility ?? null,
+      })),
+    )
+    return new Map(weights.map((w) => [w.ticker, w.weight]))
+  }, [values, selection])
+
+  const toggleSelected = (ticker: string) =>
+    setSelection((current) => toggleSelection(current, ticker))
 
   // The active metric is written out even when it was only a default, so a
   // link always says what it is showing.
@@ -144,6 +179,9 @@ export default function App() {
                 metrics={METRICS}
                 activeMetricId={activeMetric.id}
                 hiddenWhenNarrowId={hiddenWhenNarrowId}
+                selected={selection.has(entry.stock.ticker)}
+                weight={weightByTicker.get(entry.stock.ticker)}
+                onToggle={toggleSelected}
               />
             ))}
           </ol>
