@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { beta } from './regression.ts'
-import { residualReturn } from './residual.ts'
+import { residualReturn, residualVolatility } from './residual.ts'
 import { windowReturn } from './returns.ts'
 import { WINDOWS } from '../domain/windows.ts'
 import { missing, ok } from './types.ts'
@@ -74,5 +74,57 @@ describe('residualReturn', () => {
     const res = (residualReturn(laggard, rising, b, WINDOWS['12M']) as { value: number }).value
     expect(raw).toBeGreaterThan(0)
     expect(res).toBeLessThan(0)
+  })
+})
+
+describe('residualVolatility', () => {
+  const days = 400
+  const bench = Array.from({ length: days }, (_, i) => 100 * 1.0004 ** i)
+
+  it('is zero when the stock is exactly beta times the benchmark', () => {
+    // Stock daily return = 2 × benchmark daily return, every day: with β = 2
+    // the residual is identically zero, so its volatility is zero.
+    const closes: (number | null)[] = [100]
+    for (let i = 1; i < days; i++) {
+      const rb = (bench[i] as number) / (bench[i - 1] as number) - 1
+      closes.push((closes[i - 1] as number) * (1 + 2 * rb))
+    }
+    const r = residualVolatility(closes, bench, ok({ beta: 2 }), { formation: 252, skip: 21 })
+    expect(r.ok).toBe(true)
+    expect(r.ok && r.value).toBeCloseTo(0, 10)
+  })
+
+  it('recovers a planted alternating residual', () => {
+    // Residual alternates ±1% around β × benchmark: annualised residual vol
+    // is close to 1% × √252.
+    const closes: (number | null)[] = [100]
+    for (let i = 1; i < days; i++) {
+      const rb = (bench[i] as number) / (bench[i - 1] as number) - 1
+      const noise = i % 2 === 0 ? 0.01 : -0.01
+      closes.push((closes[i - 1] as number) * (1 + rb + noise))
+    }
+    const r = residualVolatility(closes, bench, ok({ beta: 1 }), { formation: 252, skip: 21 })
+    expect(r.ok).toBe(true)
+    expect(r.ok && r.value).toBeGreaterThan(0.01 * Math.sqrt(252) * 0.95)
+    expect(r.ok && r.value).toBeLessThan(0.01 * Math.sqrt(252) * 1.05)
+  })
+
+  it('fails when beta could not be estimated', () => {
+    const r = residualVolatility(bench, bench, missing('insufficient-overlap'), {
+      formation: 252,
+      skip: 21,
+    })
+    expect(!r.ok && r.reason).toBe('insufficient-overlap')
+  })
+
+  it('refuses a window off the front of the history', () => {
+    const r = residualVolatility(bench, bench, ok({ beta: 1 }), { formation: 500, skip: 21 })
+    expect(r.ok).toBe(false)
+  })
+
+  it('refuses when overlap coverage is below the floor', () => {
+    const gappy = bench.map((c, i) => (i > 100 && i < 320 ? null : c))
+    const r = residualVolatility(gappy, bench, ok({ beta: 1 }), { formation: 252, skip: 21 })
+    expect(!r.ok && r.reason).toBe('insufficient-overlap')
   })
 })

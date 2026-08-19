@@ -29,6 +29,11 @@ export interface Metric {
   /** Which end of the scale ranks first. */
   readonly direction: Direction
   /**
+   * The signal family, used by the metric strip to group entries visually.
+   * Grouping only — nothing computes across a family.
+   */
+  readonly family: 'momentum' | 'residual' | 'risk' | 'fundamental' | 'context'
+  /**
    * `value` metrics rank by a number on the record. `rank-change` metrics rank
    * by movement between two rankings, which only exists relative to a list.
    */
@@ -47,6 +52,7 @@ const w = (id: keyof typeof WINDOWS) => WINDOWS[id]
 export const METRICS: readonly Metric[] = [
   {
     id: '12-1',
+    family: 'momentum',
     label: '12−1 momentum',
     short: '12−1',
     definition: `Total return over the ${w('12-1').formation} trading days ending ${w('12-1').skip} trading days ago. The skipped month keeps short-term reversal out of the signal.`,
@@ -58,6 +64,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     id: '6-1',
+    family: 'momentum',
     label: '6−1 momentum',
     short: '6−1',
     definition: `Total return over the ${w('6-1').formation} trading days ending ${w('6-1').skip} trading days ago. Half the formation window of 12−1, the same skipped month.`,
@@ -69,6 +76,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     id: '12M',
+    family: 'momentum',
     label: 'Return 12M',
     short: '12M',
     definition: `Total return over the last ${w('12M').formation} trading days, with no skipped month.`,
@@ -80,6 +88,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     id: '3M',
+    family: 'momentum',
     label: 'Return 3M',
     short: '3M',
     definition: `Total return over the last ${w('3M').formation} trading days.`,
@@ -90,19 +99,8 @@ export const METRICS: readonly Metric[] = [
     format: (v) => percent(v),
   },
   {
-    id: 'return-vol',
-    label: 'Return / vol',
-    short: 'R/V',
-    definition:
-      'Trailing 12-month return divided by 1-year annualised volatility. No risk-free rate is subtracted — this is for comparing two names, not for pricing them.',
-    direction: 'desc',
-    kind: 'value',
-    value: (s) => s.returnPerVol,
-    prior: (s) => s.prior.returnPerVol,
-    format: (v) => signedRatio(v),
-  },
-  {
     id: 'residual',
+    family: 'residual',
     label: 'Residual 12M',
     short: 'RES',
     definition:
@@ -114,7 +112,67 @@ export const METRICS: readonly Metric[] = [
     format: (v) => percent(v),
   },
   {
+    id: 'residual-12-1',
+    family: 'residual',
+    label: 'Residual 12−1',
+    short: 'RES−1',
+    definition:
+      'The same subtraction — return minus β × the segment benchmark — over the 12−1 window: a year of formation ending one month ago, so short-term reversal stays out of the residual exactly as it does for price momentum.',
+    direction: 'desc',
+    kind: 'value',
+    value: (s) => s.residuals['12-1'] ?? null,
+    prior: (s) => s.prior.residuals['12-1'] ?? null,
+    format: (v) => percent(v),
+  },
+  {
+    id: 'residual-6-1',
+    family: 'residual',
+    label: 'Residual 6−1',
+    short: 'RES6',
+    definition:
+      'Benchmark-stripped return over the 6−1 window — half the formation period, the same skipped month, the same β fitted over three years.',
+    direction: 'desc',
+    kind: 'value',
+    value: (s) => s.residuals['6-1'] ?? null,
+    prior: (s) => s.prior.residuals['6-1'] ?? null,
+    format: (v) => percent(v),
+  },
+  {
+    id: 'residual-per-vol',
+    family: 'residual',
+    label: 'Residual / vol',
+    short: 'RES/V',
+    definition:
+      'Residual 12−1 divided by the annualised volatility of its own daily residuals over the same window (Blitz, Huij & Martens 2011). Steady benchmark-stripped strength ranks above the same return earned noisily.',
+    direction: 'desc',
+    kind: 'value',
+    value: (s) =>
+      s.residuals['12-1'] !== null &&
+      s.residuals['12-1'] !== undefined &&
+      s.residualVol !== null &&
+      s.residualVol !== undefined &&
+      s.residualVol > 0
+        ? s.residuals['12-1'] / s.residualVol
+        : null,
+    prior: () => null,
+    format: (v) => signedRatio(v),
+  },
+  {
+    id: 'return-vol',
+    family: 'risk',
+    label: 'Return / vol',
+    short: 'R/V',
+    definition:
+      'Trailing 12-month return divided by 1-year annualised volatility. No risk-free rate is subtracted — this is for comparing two names, not for pricing them.',
+    direction: 'desc',
+    kind: 'value',
+    value: (s) => s.returnPerVol,
+    prior: (s) => s.prior.returnPerVol,
+    format: (v) => signedRatio(v),
+  },
+  {
     id: 'volatility',
+    family: 'risk',
     label: 'Volatility 1Y',
     short: 'VOL',
     definition:
@@ -127,6 +185,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     id: 'beta',
+    family: 'risk',
     label: 'Beta',
     short: 'β',
     definition:
@@ -139,6 +198,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     id: 'surprise',
+    family: 'fundamental',
     label: 'EPS surprise',
     short: 'SUE',
     definition:
@@ -153,6 +213,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     id: 'rank-change',
+    family: 'context',
     label: `${RANK_CHANGE_OFFSET}d rank change`,
     short: 'Δ RANK',
     definition: `Positions climbed in the 12−1 ranking of this same list over the last ${RANK_CHANGE_OFFSET} trading days. Positive means the name moved towards rank 1. Names that were unrankable then have no change.`,
@@ -165,6 +226,7 @@ export const METRICS: readonly Metric[] = [
   },
   {
     id: 'market-cap',
+    family: 'context',
     label: 'Market cap',
     short: 'CAP',
     definition: 'Shares outstanding × last price, as reported by the provider on the refresh date.',

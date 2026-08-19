@@ -2,7 +2,8 @@ import type { Manifest } from '../domain/dataset.ts'
 import { SEGMENTS } from '../domain/segments.ts'
 import { METRICS } from '../domain/metrics.ts'
 import { BETA_LOOKBACK, RANK_CHANGE_OFFSET } from '../domain/windows.ts'
-import { isoToDisplay } from '../domain/format.ts'
+import { isoToDisplay, percent, percentPlain } from '../domain/format.ts'
+import { describeRegime } from '../domain/regime.ts'
 
 /**
  * Settings, and what that means here.
@@ -33,6 +34,32 @@ export function SettingsView({ manifest, watchlistSize, onClearWatchlist }: Prop
         <Row label="Trading days" value={String(manifest.calendarDays)} />
         <Row label="Provider" value={manifest.provider} />
       </div>
+
+      {manifest.market && (
+        <div className="section">
+          <h2 className="section-title">Market regime</h2>
+          <p className="prose">{describeRegime(manifest.market)}.</p>
+          <Row
+            label="Below 52-week high"
+            hint="SPY close vs its highest close of the trailing 252 trading days"
+            value={percentPlain((1 - manifest.market.fromHigh))}
+          />
+          <Row label="Return 6M" hint="SPY, 126 trading days" value={percent(manifest.market.return6M)} />
+          <Row label="Return 1M" hint="SPY, 21 trading days" value={percent(manifest.market.return1M)} />
+          <p className="prose">
+            The states, from fixed thresholds: <strong>Normal</strong> — within 10% of the
+            high and non-negative over six months. <strong>Caution</strong> — more than 10%
+            below the high, or negative over six months. <strong>Reversal risk</strong> —
+            more than 10% below the high <em>and</em> up over 5% in a month, the setup in
+            which momentum rankings have historically inverted. In a 2007–2026
+            walk-forward study of this universe, momentum rankings carried forward
+            information in Normal states and ran negative in the others; the same
+            structure is documented in the academic literature (Cooper–Gutierrez–Hameed
+            2004; Daniel–Moskowitz 2016). The meter on the ranked list marks the 10%
+            line; the dot is the market. Context only — rankings are never altered.
+          </p>
+        </div>
+      )}
 
       <div className="section">
         <h2 className="section-title">Segments and benchmarks</h2>

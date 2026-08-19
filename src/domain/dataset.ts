@@ -35,6 +35,11 @@ export interface SecurityRecord {
 
   readonly returns: ByWindow
   readonly residuals: ByWindow
+  /**
+   * Annualised volatility of daily residuals over the 12−1 window (optional —
+   * absent in older datasets). The denominator of residual-per-volatility.
+   */
+  readonly residualVol?: number | null
   readonly volatility: ByVolatilityWindow
   /** 12-month return divided by 1-year annualised volatility. */
   readonly returnPerVol: number | null
