@@ -75,7 +75,7 @@ describe('eligibility', () => {
     overrides: Record<string, Partial<PriceEvidence>>,
   ): ((t: string) => PriceEvidence) => {
     const base: PriceEvidence = { staleness: 0, observations: 800, marketCap: 1e9 }
-    return (ticker) => ({ ...base, ...(overrides[ticker] ?? {}) })
+    return (ticker) => ({ ...base, ...overrides[ticker] })
   }
 
   describe('resolveSegmentConflicts', () => {

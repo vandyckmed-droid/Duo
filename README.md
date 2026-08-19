@@ -147,11 +147,11 @@ market.
 npm install
 npm run dev
 
-npm run test       # 185 tests, no network
-npm run lint
-npm run typecheck
-npm run build
+npm run verify     # lint, typecheck, test, build — what CI runs
 ```
+
+Individually: `npm run lint`, `npm run typecheck`, `npm run test` (197 tests, no
+network), `npm run build`.
 
 The test suite covers boundaries rather than happy paths: endpoint selection
 and tolerance, formation and skip windows, exactly-minimum history, gaps at
