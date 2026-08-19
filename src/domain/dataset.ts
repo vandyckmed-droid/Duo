@@ -1,4 +1,5 @@
 import type { Segment } from './segments.ts'
+import type { MarketRegime } from './regime.ts'
 import type { VolatilityWindowId, WindowId } from './windows.ts'
 
 /**
@@ -50,6 +51,21 @@ export interface SecurityRecord {
   readonly low52: number | null
   readonly high52: number | null
 
+  /**
+   * The latest earnings announcement within the last 63 trading days
+   * (optional — absent when there is none, or in older datasets).
+   * `surprise` is actual minus estimated EPS as a share of the
+   * announcement-day close; `sinceReturn` is the return from the
+   * announcement's trading day to the as-of date.
+   */
+  readonly earnings?: {
+    readonly date: string
+    readonly epsActual: number | null
+    readonly epsEstimated: number | null
+    readonly surprise: number | null
+    readonly sinceReturn: number | null
+  }
+
   /** Usable observations held for this security, and their span. */
   readonly history: { days: number; from: string | null; to: string | null }
 
@@ -94,6 +110,12 @@ export interface Manifest {
   readonly rankChangeOffset: number
   /** Names dropped this run and why, so thin coverage is explainable. */
   readonly excluded: readonly { ticker: string; reason: string }[]
+  /**
+   * The market momentum regime at the dataset's as-of date (optional —
+   * absent in older datasets, and either side of the contract works
+   * without the other).
+   */
+  readonly market?: MarketRegime
 }
 
 export interface UniverseFile {

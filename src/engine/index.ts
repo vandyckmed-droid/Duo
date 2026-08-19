@@ -9,6 +9,7 @@
 export * from './types.ts'
 export * from './series.ts'
 export * from './returns.ts'
+export * from './path.ts'
 export * from './volatility.ts'
 export * from './regression.ts'
 export * from './residual.ts'

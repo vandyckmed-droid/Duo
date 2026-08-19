@@ -1,11 +1,13 @@
 import {
   beta as fitBeta,
+  endpointAt,
   isUsable,
   lastValidIndex,
   maxDrawdown,
   observationCount,
   realisedVolatility,
   residualReturn,
+  returnBetween,
   returnPerVol,
   valueOrNull,
   windowReturn,
@@ -22,7 +24,7 @@ import {
   WINDOW_IDS,
   type VolatilityWindowId,
 } from '../src/domain/windows.ts'
-import type { PricePoint } from './fmp.ts'
+import type { EarningsEvent, PricePoint } from './fmp.ts'
 import type { Member } from './membership.ts'
 
 /**
@@ -91,6 +93,8 @@ export interface ComputeInput {
   readonly marketCap: number | null
   readonly priorMarketCap: number | null
   readonly stale: boolean
+  /** Announcement-dated earnings events for this ticker, oldest first. */
+  readonly earnings?: readonly EarningsEvent[]
 }
 
 export interface ComputeContext {
@@ -154,6 +158,7 @@ export function computeSecurity(
   const lastIndex = lastValidIndex(closes)
   const range = fiftyTwoWeekRange(closes, anchor)
   const first = firstDate(closes, context.calendar)
+  const earnings = latestEarnings(input.earnings, closes, context.calendar, anchor)
 
   return {
     ticker: member.ticker,
@@ -175,6 +180,7 @@ export function computeSecurity(
     lastDate: lastIndex >= 0 ? (context.calendar[lastIndex] as string) : null,
     low52: range.low,
     high52: range.high,
+    ...(earnings ? { earnings } : {}),
     history: {
       days: observationCount(closes),
       from: first,
@@ -193,6 +199,58 @@ export function computeSecurity(
 
 function mapResult<T, R>(r: Result<T>, f: (v: T) => R): Result<R> {
   return r.ok ? { ok: true, value: f(r.value) } : r
+}
+
+/** How stale an announcement may be and still be published as "latest". */
+const EARNINGS_MAX_AGE = 63
+
+/**
+ * The latest announcement that is public knowledge at the anchor and recent
+ * enough to matter. Point-in-time by construction — only events dated on or
+ * before the anchor's calendar date qualify — and the surprise is scaled by
+ * the announcement-day close so a penny-estimate name cannot explode it.
+ */
+function latestEarnings(
+  events: readonly EarningsEvent[] | undefined,
+  closes: Closes,
+  calendar: readonly string[],
+  anchor: number,
+): SecurityRecord['earnings'] | null {
+  if (!events || events.length === 0) return null
+  const anchorDate = calendar[anchor]
+  if (anchorDate === undefined) return null
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i] as EarningsEvent
+    if (event.date > anchorDate) continue
+    const index = calendarIndexAtOrAfter(calendar, event.date)
+    if (index < 0 || index > anchor || anchor - index > EARNINGS_MAX_AGE) return null
+    const price = endpointAt(closes, index)
+    const surprise =
+      event.epsActual !== null && event.epsEstimated !== null && price.ok
+        ? (event.epsActual - event.epsEstimated) / price.value.close
+        : null
+    return {
+      date: event.date,
+      epsActual: event.epsActual,
+      epsEstimated: event.epsEstimated,
+      surprise,
+      sinceReturn: index < anchor ? valueOrNull(returnBetween(closes, index, anchor)) : null,
+    }
+  }
+  return null
+}
+
+/** First calendar index at or after an ISO date, or −1 past the end. */
+function calendarIndexAtOrAfter(calendar: readonly string[], date: string): number {
+  let lo = 0
+  let hi = calendar.length - 1
+  if (hi < 0 || (calendar[hi] as string) < date) return -1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if ((calendar[mid] as string) < date) lo = mid + 1
+    else hi = mid
+  }
+  return lo
 }
 
 /** Low and high of adjusted closes over the trailing year. */

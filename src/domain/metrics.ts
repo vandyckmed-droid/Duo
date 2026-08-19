@@ -138,6 +138,20 @@ export const METRICS: readonly Metric[] = [
     format: (v) => ratio(v),
   },
   {
+    id: 'surprise',
+    label: 'EPS surprise',
+    short: 'SUE',
+    definition:
+      'Latest quarter’s actual EPS minus the consensus estimate at announcement, as a share of the announcement-day price. Only announcements from the last 63 trading days count; names without one are set aside, not ranked last.',
+    direction: 'desc',
+    kind: 'value',
+    value: (s) => s.earnings?.surprise ?? null,
+    // No honest prior exists: the announcement 63 trading days ago is a
+    // different quarter, so rank change is not offered for this metric.
+    prior: () => null,
+    format: (v) => percent(v, 2),
+  },
+  {
     id: 'rank-change',
     label: `${RANK_CHANGE_OFFSET}d rank change`,
     short: 'Δ RANK',

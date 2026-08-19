@@ -8,6 +8,13 @@ Live: <https://vandyckmed-droid.github.io/Duo/>
 The app opens directly into the ranked list. There is no landing page and no
 dashboard — the first thing on screen is the ranking, already sorted.
 
+**V2** adds two evidence-backed pieces on top of the frozen V1 (`v1.0`,
+`v1-stable`): a one-line market momentum regime statement on the ranked
+list, and an EPS-surprise metric with a latest-earnings section on the
+ticker detail. Why each is defensible — with the internal walk-forward
+evidence and the published literature — is in `docs/V2-CHANGES.md`; the
+full experiment ledger is `docs/RESEARCH-REGISTRY.md`.
+
 ```
 screener → ranker → investigation → watchlist → portfolio
 ```

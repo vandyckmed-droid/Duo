@@ -69,7 +69,9 @@ jobs:
       - name: Restore the adjusted-price cache
         uses: actions/cache@v4
         with:
-          path: .cache/prices
+          path: |
+            .cache/prices
+            .cache/earnings
           key: duo-prices-${{ github.run_id }}
           restore-keys: |
             duo-prices-
@@ -122,6 +124,18 @@ jobs:
               console.log(`- **Excluded** ${m.excluded.length}`);
             '
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # On pull requests the built site is uploaded as a downloadable preview
+      # instead of being deployed: unzip and run `npx serve dist` (the app
+      # fetches its dataset over HTTP, so file:// will not work). Production
+      # Pages stays whatever the default branch last deployed.
+      - name: Upload the preview site
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-site
+          path: dist
+          retention-days: 14
 
       - uses: actions/upload-pages-artifact@v4
         with:

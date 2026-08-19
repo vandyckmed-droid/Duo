@@ -1,0 +1,78 @@
+# The Alpha Lab: walk-forward signal evaluation over ~10 years of
+# dividend-adjusted history. Runs on push when the lab changes; the deep price
+# cache is separate from production's and restored by prefix like it.
+# Publishes nothing — the output is a report artifact and a step summary.
+name: Alpha Lab
+on:
+  push:
+    branches: [claude/reset-repository-blank-h3ll7p]
+    paths:
+      - 'lab/**'
+      - '.github/workflows/alpha-lab.yml'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: alpha-lab
+  cancel-in-progress: false
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # The Lab and the publish validation spend the same provider key's rate
+      # budget; run together, the publish run's quote batches starve into hard
+      # 429s (seen on 1061dd1). A shared concurrency group cannot serialize
+      # them — the same push queues both, and GitHub cancels the older pending
+      # run in a group (which is how the first R-016 run died 4s in). So the
+      # Lab yields explicitly: it waits until no publish run is active before
+      # starting, and proceeds after 20 minutes rather than deadlocking if
+      # something wedges. Only the Lab waits — publish never queues behind
+      # research.
+      - name: Yield the provider key to any active publish run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            active=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/workflows/publish.yml/runs?per_page=10" \
+              | node -p 'JSON.parse(require("fs").readFileSync(0,"utf8")).workflow_runs.filter(r => ["queued","in_progress","waiting","pending"].includes(r.status)).length' \
+              || echo unknown)
+            if [ "$active" = "0" ]; then
+              echo "No publish run active — proceeding."
+              exit 0
+            fi
+            echo "Publish activity: $active run(s) — waiting (attempt $i)…"
+            sleep 20
+          done
+          echo "Proceeding after the wait ceiling; the client tolerates contention."
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The `deep2005` prefix retired the 2015-floor caches when the history
+      # floor moved (R-016): fetchFrom only extends a cached series forward,
+      # so deepening the floor needs a cold refetch, not a merge.
+      - name: Restore the deep price cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/lab-prices
+            .cache/lab-earnings
+          key: lab-prices-deep2005-${{ github.run_id }}
+          restore-keys: |
+            lab-prices-deep2005-
+      - name: Run the Lab
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+          LAB_FROM: '2005-01-01'
+        run: npx tsx lab/run.ts
+      - name: Upload the report
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-lab-report
+          path: .lab/report.json
+          retention-days: 90
