@@ -9,6 +9,12 @@ Live: https://vandyckmed-droid.github.io/Duo/
 The active metric and sector live in the URL hash, so a ranking can be
 linked and reloaded as seen (`#metric=volatility&sector=Energy`).
 
+Tapping a row selects it — sorting and the sector filter don't clear the
+selection, and it persists across reloads. A selection's stocks are weighted
+inversely to volatility, shown as a percentage next to the ticker; a stock
+without enough history to have a volatility is excluded from the weighting
+and marked `excl.` rather than dropped from the selection.
+
 ## Development
 
 ```
@@ -57,6 +63,7 @@ to go negative; over three years it does not.
 | `src/data/` | The dataset and its loader. Prices are columnar: one shared calendar, one array of closes per ticker. |
 | `src/calculations/` | Pure, framework-free maths. No React, no dataset knowledge. |
 | `src/metrics/` | The metric registry and the ranking. |
+| `src/portfolio/` | Pure maths over a selection of stocks — weighting today, risk and allocation later. |
 | `src/ui/` | Presentation. |
 | `scripts/` | The data refresh, run by hand rather than at build time. |
 

@@ -207,9 +207,42 @@ button.column-label:hover {
 .row {
   height: var(--row-height);
   border-bottom: 1px solid var(--color-rule);
+  cursor: pointer;
   /* Keeps 400 rows cheap: offscreen rows are not laid out until needed. */
   content-visibility: auto;
   contain-intrinsic-size: auto var(--row-height);
+}
+
+/* The row is a role="button" <li>, which the global button/a rule misses. */
+.row:focus-visible {
+  outline: 2px solid var(--color-fg);
+  outline-offset: -2px;
+}
+
+/*
+ * Selection inverts the row rather than adding a checkbox or star, to keep
+ * every row's chrome the same and let the state itself be the only marker.
+ * Written as explicit overrides rather than redefining the design tokens
+ * within this scope: .value-active already reads --color-fg for its own
+ * reason (staying white against the black page), and swapping that token
+ * here would silently put it on a white background too.
+ */
+.row-selected {
+  background: var(--color-fg);
+  color: var(--color-bg);
+}
+
+.row-selected .name,
+.row-selected .value {
+  color: var(--color-faint);
+}
+
+.row-selected .value-active {
+  color: var(--color-bg);
+}
+
+.row-selected .mark-monogram {
+  color: var(--color-bg);
 }
 
 .rank {
@@ -276,6 +309,16 @@ button.column-label:hover {
 .ticker {
   font-weight: 600;
   letter-spacing: 0.01em;
+}
+
+/* Shown only on a selected row, so it never competes with the ticker on the
+   other 398. Inherits the row's (possibly inverted) colour at reduced
+   weight, rather than a fixed colour that would need its own override. */
+.weight {
+  margin-left: var(--space-xs);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 400;
 }
 
 .name {
