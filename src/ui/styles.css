@@ -45,6 +45,11 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  /* Glued down: the app never scrolls sideways. Any element wider than the
+     viewport is a layout bug to fix, not a pan to allow — one overflowing
+     row used to let iOS drag the whole interface off-screen. */
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 body {
@@ -530,7 +535,15 @@ button {
 
 .stat-label { color: var(--text-dim); }
 .stat-label small { display: block; font-size: 11px; color: var(--text-faint); }
-.stat-value { font-weight: 620; text-align: right; white-space: nowrap; }
+/* Values may wrap rather than widen the page: numbers never do (no break
+   points), but a long unbroken string — the provider URL was the offender —
+   breaks instead of pushing the row past the viewport. */
+.stat-value {
+  font-weight: 620;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 .headline {
   display: flex;
