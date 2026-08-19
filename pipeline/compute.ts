@@ -156,6 +156,23 @@ export function computeSecurity(
   const priorTwelveMonth = windowReturn(closes, WINDOWS['12M'], priorAnchor)
   const priorYearVol = realisedVolatility(closes, VOLATILITY_WINDOWS['1Y'], priorAnchor)
 
+  // Volatility over each ranking window's formation span — raw returns and
+  // residuals — so the ÷ Vol dimension always divides a return by the noise
+  // of the same days and the same series. The skip is honoured by anchoring
+  // the raw estimate at the formation's end rather than today.
+  const RANK_WINDOWS = ['12M', '6M', '12-1', '6-1'] as const
+  const rankVol: ByWindow = {}
+  const rankResidualVol: ByWindow = {}
+  for (const id of RANK_WINDOWS) {
+    const window = WINDOWS[id]
+    rankVol[id] = valueOrNull(
+      realisedVolatility(closes, window.formation, anchor - window.skip),
+    )
+    rankResidualVol[id] = valueOrNull(
+      residualVolatility(closes, benchmark, betaFit, window, anchor),
+    )
+  }
+
   const lastIndex = lastValidIndex(closes)
   const range = fiftyTwoWeekRange(closes, anchor)
   const first = firstDate(closes, context.calendar)
@@ -174,6 +191,8 @@ export function computeSecurity(
     residualVol: valueOrNull(
       residualVolatility(closes, benchmark, betaFit, WINDOWS['12-1'], anchor),
     ),
+    rankVol,
+    rankResidualVol,
     volatility,
     returnPerVol: valueOrNull(returnPerVol(twelveMonth, yearVol)),
     maxDrawdown: valueOrNull(maxDrawdown(closes, DRAWDOWN_LOOKBACK, anchor)),

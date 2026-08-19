@@ -164,13 +164,54 @@ button {
   background: var(--accent);
 }
 
-/* Family boundary inside the strip: a hairline, not a label — the grouping
-   should be felt while scanning, not read. */
-.strip-gap {
+/* The dimensional ranking controls: a two-cell window segment, a hairline,
+   and three independent toggles. One row, no scrolling — dimensions, not
+   permutations. Active state is the same filled pill as everywhere else. */
+.rank-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px var(--pad) 7px;
+}
+
+.rank-window {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--raised);
+  border-radius: 9px;
+  flex: 0 0 auto;
+}
+
+.rank-toggles {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rank-window button,
+.rank-toggles button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 13px;
+  font-weight: 620;
+  letter-spacing: 0.01em;
+  color: var(--text-faint);
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.rank-window button[aria-pressed='true'],
+.rank-toggles button[aria-pressed='true'] {
+  color: var(--bg);
+  background: var(--accent);
+}
+
+.rank-divider {
   flex: 0 0 auto;
   width: 1px;
   align-self: stretch;
-  margin: 7px 5px;
+  margin: 5px 0;
   background: var(--line);
 }
 

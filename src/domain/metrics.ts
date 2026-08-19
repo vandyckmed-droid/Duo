@@ -1,7 +1,16 @@
 import type { Direction } from '../engine/ranking.ts'
 import type { SecurityRecord } from './dataset.ts'
 import { marketCap, percent, percentPlain, ratio, signedInteger, signedRatio } from './format.ts'
-import { RANK_CHANGE_OFFSET, WINDOWS } from './windows.ts'
+import {
+  allRankSpecs,
+  rankDefinition,
+  rankLabel,
+  rankMetricId,
+  rankPrior,
+  rankShort,
+  rankValue,
+} from './rankSpec.ts'
+import { RANK_CHANGE_OFFSET } from './windows.ts'
 
 /**
  * The metric registry.
@@ -32,7 +41,7 @@ export interface Metric {
    * The signal family, used by the metric strip to group entries visually.
    * Grouping only — nothing computes across a family.
    */
-  readonly family: 'momentum' | 'residual' | 'risk' | 'fundamental' | 'context'
+  readonly family: 'rank' | 'momentum' | 'residual' | 'risk' | 'fundamental' | 'context'
   /**
    * `value` metrics rank by a number on the record. `rank-change` metrics rank
    * by movement between two rankings, which only exists relative to a list.
@@ -47,51 +56,33 @@ export interface Metric {
   readonly basedOn?: string
 }
 
-const w = (id: keyof typeof WINDOWS) => WINDOWS[id]
+/**
+ * The primary ranking is the dimensional system in rankSpec.ts: every
+ * combination of window, skip, residual and ÷vol is one generated entry, so
+ * sixteen rankings share one implementation and cannot drift apart. The
+ * standalone statistics below are separate metrics, not dimensions - they
+ * are offered outside the primary controls.
+ */
+const RANK_METRICS: readonly Metric[] = allRankSpecs().map((spec) => ({
+  id: rankMetricId(spec),
+  family: 'rank' as const,
+  label: rankLabel(spec),
+  short: rankShort(spec),
+  definition: rankDefinition(spec),
+  direction: 'desc' as const,
+  kind: 'value' as const,
+  value: (s: SecurityRecord) => rankValue(spec, s),
+  prior: (s: SecurityRecord) => rankPrior(spec, s),
+  format: (v: number | null) => (spec.divVol ? signedRatio(v) : percent(v)),
+}))
 
-export const METRICS: readonly Metric[] = [
-  {
-    id: '12-1',
-    family: 'momentum',
-    label: '12−1 momentum',
-    short: '12−1',
-    definition: `Total return over the ${w('12-1').formation} trading days ending ${w('12-1').skip} trading days ago. The skipped month keeps short-term reversal out of the signal.`,
-    direction: 'desc',
-    kind: 'value',
-    value: (s) => s.returns['12-1'] ?? null,
-    prior: (s) => s.prior.returns['12-1'] ?? null,
-    format: (v) => percent(v),
-  },
-  {
-    id: '6-1',
-    family: 'momentum',
-    label: '6−1 momentum',
-    short: '6−1',
-    definition: `Total return over the ${w('6-1').formation} trading days ending ${w('6-1').skip} trading days ago. Half the formation window of 12−1, the same skipped month.`,
-    direction: 'desc',
-    kind: 'value',
-    value: (s) => s.returns['6-1'] ?? null,
-    prior: (s) => s.prior.returns['6-1'] ?? null,
-    format: (v) => percent(v),
-  },
-  {
-    id: '12M',
-    family: 'momentum',
-    label: 'Return 12M',
-    short: '12M',
-    definition: `Total return over the last ${w('12M').formation} trading days, with no skipped month.`,
-    direction: 'desc',
-    kind: 'value',
-    value: (s) => s.returns['12M'] ?? null,
-    prior: (s) => s.prior.returns['12M'] ?? null,
-    format: (v) => percent(v),
-  },
+const STANDALONE_METRICS: readonly Metric[] = [
   {
     id: '3M',
     family: 'momentum',
     label: 'Return 3M',
     short: '3M',
-    definition: `Total return over the last ${w('3M').formation} trading days.`,
+    definition: 'Total return over the last 63 trading days.',
     direction: 'desc',
     kind: 'value',
     value: (s) => s.returns['3M'] ?? null,
@@ -99,71 +90,12 @@ export const METRICS: readonly Metric[] = [
     format: (v) => percent(v),
   },
   {
-    id: 'residual',
-    family: 'residual',
-    label: 'Residual 12M',
-    short: 'RES',
-    definition:
-      'Twelve-month return minus β × the same window on the segment benchmark (SPY, IJH or IJR). The fitted intercept is not subtracted, so persistent outperformance stays visible instead of being absorbed.',
-    direction: 'desc',
-    kind: 'value',
-    value: (s) => s.residuals['12M'] ?? null,
-    prior: (s) => s.prior.residuals['12M'] ?? null,
-    format: (v) => percent(v),
-  },
-  {
-    id: 'residual-12-1',
-    family: 'residual',
-    label: 'Residual 12−1',
-    short: 'RES−1',
-    definition:
-      'The same subtraction — return minus β × the segment benchmark — over the 12−1 window: a year of formation ending one month ago, so short-term reversal stays out of the residual exactly as it does for price momentum.',
-    direction: 'desc',
-    kind: 'value',
-    value: (s) => s.residuals['12-1'] ?? null,
-    prior: (s) => s.prior.residuals['12-1'] ?? null,
-    format: (v) => percent(v),
-  },
-  {
-    id: 'residual-6-1',
-    family: 'residual',
-    label: 'Residual 6−1',
-    short: 'RES6',
-    definition:
-      'Benchmark-stripped return over the 6−1 window — half the formation period, the same skipped month, the same β fitted over three years.',
-    direction: 'desc',
-    kind: 'value',
-    value: (s) => s.residuals['6-1'] ?? null,
-    prior: (s) => s.prior.residuals['6-1'] ?? null,
-    format: (v) => percent(v),
-  },
-  {
-    id: 'residual-per-vol',
-    family: 'residual',
-    label: 'Residual / vol',
-    short: 'RES/V',
-    definition:
-      'Residual 12−1 divided by the annualised volatility of its own daily residuals over the same window (Blitz, Huij & Martens 2011). Steady benchmark-stripped strength ranks above the same return earned noisily.',
-    direction: 'desc',
-    kind: 'value',
-    value: (s) =>
-      s.residuals['12-1'] !== null &&
-      s.residuals['12-1'] !== undefined &&
-      s.residualVol !== null &&
-      s.residualVol !== undefined &&
-      s.residualVol > 0
-        ? s.residuals['12-1'] / s.residualVol
-        : null,
-    prior: () => null,
-    format: (v) => signedRatio(v),
-  },
-  {
     id: 'return-vol',
     family: 'risk',
     label: 'Return / vol',
     short: 'R/V',
     definition:
-      'Trailing 12-month return divided by 1-year annualised volatility. No risk-free rate is subtracted — this is for comparing two names, not for pricing them.',
+      'Trailing 12-month return divided by 1-year annualised volatility. No risk-free rate is subtracted - this is for comparing two names, not for pricing them.',
     direction: 'desc',
     kind: 'value',
     value: (s) => s.returnPerVol,
@@ -206,8 +138,6 @@ export const METRICS: readonly Metric[] = [
     direction: 'desc',
     kind: 'value',
     value: (s) => s.earnings?.surprise ?? null,
-    // No honest prior exists: the announcement 63 trading days ago is a
-    // different quarter, so rank change is not offered for this metric.
     prior: () => null,
     format: (v) => percent(v, 2),
   },
@@ -237,6 +167,8 @@ export const METRICS: readonly Metric[] = [
     format: (v) => marketCap(v),
   },
 ]
+
+export const METRICS: readonly Metric[] = [...RANK_METRICS, ...STANDALONE_METRICS]
 
 const BY_ID = new Map(METRICS.map((m) => [m.id, m]))
 

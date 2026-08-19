@@ -40,6 +40,14 @@ export interface SecurityRecord {
    * absent in older datasets). The denominator of residual-per-volatility.
    */
   readonly residualVol?: number | null
+  /**
+   * Volatility over each ranking window's formation span (optional): raw
+   * daily returns and daily residuals respectively, annualised. The ÷ Vol
+   * ranking dimension divides a window's return by the matching entry, so
+   * numerator and denominator always cover the same days and the same series.
+   */
+  readonly rankVol?: ByWindow
+  readonly rankResidualVol?: ByWindow
   readonly volatility: ByVolatilityWindow
   /** 12-month return divided by 1-year annualised volatility. */
   readonly returnPerVol: number | null

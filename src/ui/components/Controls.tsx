@@ -1,8 +1,17 @@
-import { Fragment, useState } from 'react'
+import { useRef, useState } from 'react'
 import { METRICS } from '../../domain/metrics.ts'
 import type { Metric } from '../../domain/metrics.ts'
+import {
+  DEFAULT_RANK_SPEC,
+  parseRankMetricId,
+  rankMetricId,
+  type RankSpec,
+} from '../../domain/rankSpec.ts'
 import type { Screen } from '../../domain/screen.ts'
 import { SEGMENTS, type Segment } from '../../domain/segments.ts'
+
+/** The statistics offered outside the primary controls. */
+const STANDALONE = METRICS.filter((m) => m.family !== 'rank')
 
 /**
  * The ranking controls.
@@ -39,24 +48,45 @@ export function Controls({
   const activeFilters =
     (screen.segment ? 1 : 0) + (screen.sector ? 1 : 0) + (screen.query.trim() ? 1 : 0)
 
+  // The dimensional controls. `spec` is null while a standalone statistic
+  // ranks the list; the last dimensional configuration is remembered so a
+  // tap on any dimension returns to the methodology the user had built,
+  // with that dimension applied.
+  const spec = parseRankMetricId(screen.metricId)
+  const lastSpec = useRef<RankSpec>(DEFAULT_RANK_SPEC)
+  if (spec) lastSpec.current = spec
+  const base = spec ?? lastSpec.current
+  const apply = (patch: Partial<RankSpec>) =>
+    onChange({ metricId: rankMetricId({ ...base, ...patch }) })
+  const flip = (key: 'skip' | 'residual' | 'divVol') =>
+    spec ? apply({ [key]: !spec[key] }) : apply({ [key]: true })
+
   return (
     <>
-      <div className="strip" role="tablist" aria-label="Ranking variable">
-        {METRICS.map((m, i) => (
-          <Fragment key={m.id}>
-            {i > 0 && METRICS[i - 1]?.family !== m.family && (
-              <span className="strip-gap" aria-hidden="true" />
-            )}
+      <div className="rank-controls">
+        <div className="rank-window" role="group" aria-label="Return window">
+          {(['12M', '6M'] as const).map((w) => (
             <button
-              role="tab"
-              className="strip-item"
-              aria-selected={m.id === screen.metricId}
-              onClick={() => onChange({ metricId: m.id })}
+              key={w}
+              aria-pressed={spec !== null && spec.window === w}
+              onClick={() => apply({ window: w })}
             >
-              {m.short}
+              {w}
             </button>
-          </Fragment>
-        ))}
+          ))}
+        </div>
+        <span className="rank-divider" aria-hidden="true" />
+        <div className="rank-toggles" role="group" aria-label="Ranking adjustments">
+          <button aria-pressed={spec !== null && spec.skip} onClick={() => flip('skip')}>
+            Skip 1M
+          </button>
+          <button aria-pressed={spec !== null && spec.residual} onClick={() => flip('residual')}>
+            Residual
+          </button>
+          <button aria-pressed={spec !== null && spec.divVol} onClick={() => flip('divVol')}>
+            ÷ Vol
+          </button>
+        </div>
       </div>
 
       <div className="subhead">
@@ -106,6 +136,20 @@ export function Controls({
                 onClick={() => onChange({ sector: screen.sector === sector ? null : sector })}
               >
                 {sector}
+              </button>
+            ))}
+          </div>
+          {/* Standalone statistics: separate metrics, not dimensions of the
+              primary methodology, so they live behind the disclosure. */}
+          <div className="strip" style={{ padding: 0 }} role="group" aria-label="Other metrics">
+            {STANDALONE.map((m) => (
+              <button
+                key={m.id}
+                className="strip-item"
+                aria-pressed={m.id === screen.metricId}
+                onClick={() => onChange({ metricId: m.id })}
+              >
+                {m.short}
               </button>
             ))}
           </div>
