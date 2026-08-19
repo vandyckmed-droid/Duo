@@ -108,7 +108,9 @@ async function main(): Promise<void> {
     sector: m.sector || 'Unknown',
     industry: m.industry || 'Unknown',
   }))
-  const universe: LabUniverse = { calendar: aligned.calendar, securities }
+  const market = aligned.closes.get('SPY')
+  if (!market) throw new Error('SPY is not in the aligned dataset')
+  const universe: LabUniverse = { calendar: aligned.calendar, securities, market }
 
   log('Walking forward…')
   const report = walkForward(universe, DEFAULT_CONFIG)
@@ -149,6 +151,38 @@ function renderTable(report: ReturnType<typeof walkForward>): string {
   lines.push(
     `*horizon exceeds the ${report.config.step}d rebalance step: overlapping observations, t-stat overstated.`,
   )
+
+  // Regime split for the signals the overlay is meant to protect, at the
+  // non-overlapping horizon: does any definition separate the dates where
+  // momentum worked from the dates where it reversed?
+  const focus = ['12-1', '6-1', 'residual-12M', 'alpha-v2']
+  const definitions = Object.keys(report.regimes)
+  if (definitions.length > 0) {
+    lines.push('')
+    lines.push('### Momentum ICs by regime (21d horizon)')
+    lines.push('')
+    lines.push(`| Regime | State | Dates | ${focus.join(' | ')} |`)
+    lines.push(`| --- | --- | --- | ${focus.map(() => '---').join(' | ')} |`)
+    for (const definition of definitions) {
+      for (const state of ['normal', 'adverse'] as const) {
+        const cells = focus.map((signal) => {
+          const h = report.signals
+            .find((s) => s.signal === signal)
+            ?.horizons.find((x) => x.horizon === 21)
+          const r = h?.byRegime[definition]?.[state]
+          return r ? num(r.mean) : '—'
+        })
+        const count = report.regimes[definition]?.counts[state] ?? 0
+        lines.push(`| ${definition} | ${state} | ${count} | ${cells.join(' | ')} |`)
+      }
+    }
+    lines.push('')
+    lines.push(
+      `State changes across ${report.dates.length} dates: ${definitions
+        .map((d) => `${d} ${report.regimes[d]?.flips}`)
+        .join(', ')}.`,
+    )
+  }
   return lines.join('\n')
 }
 

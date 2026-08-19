@@ -136,3 +136,55 @@ Schema per entry:
 - **Date tested**: 2026-08-19.
 - **Result**: hypothesis NOT met — tracks momentum closely (by-year ICs nearly identical to 12−1), 126d IC +0.018 < 6−1's +0.026; the trend family drags. Turnover fine (30%).
 - **Decision**: stays in research. Price-only families are too correlated to compose into anything better than the best single member; the composite's case now rests on adding orthogonal information (fundamental momentum) and on regime conditioning.
+
+## R-011 — Drawdown regime
+
+- **Hypothesis**: when the market is at least 10% below its trailing-year
+  high, momentum's loser leg is crowded with high-beta fallen names and the
+  strategy's asymmetry worsens; momentum-family ICs are materially lower in
+  this state.
+- **Signal (regime)**: SPY close < 90% of its trailing 252-day high →
+  `adverse`, else `normal`. Threshold fixed a priori (the conventional
+  correction line), not fitted.
+- **Expected direction**: momentum ICs in `adverse` < `normal`.
+- **Date registered**: 2026-08-19. **Result**: pending.
+
+## R-012 — Trend regime
+
+- **Hypothesis**: momentum works when the market itself has intermediate
+  trend; a negative market halts continuation.
+- **Signal (regime)**: SPY 126-day return < 0 → `adverse`. Threshold zero,
+  fixed a priori.
+- **Expected direction**: momentum ICs in `adverse` < `normal`.
+- **Date registered**: 2026-08-19. **Result**: pending.
+
+## R-013 — Volatility regime
+
+- **Hypothesis**: high market volatility marks the environments where
+  momentum's tail risk lives.
+- **Signal (regime)**: SPY 63-day realised volatility > 20% annualised →
+  `adverse`. Threshold fixed a priori (the conventional VIX-20 line).
+- **Expected direction**: momentum ICs in `adverse` < `normal`.
+- **Date registered**: 2026-08-19. **Result**: pending.
+
+## R-014 — Rebound regime (crash signature)
+
+- **Hypothesis**: momentum crashes concentrate in sharp rebounds off lows —
+  the market still well below its high but rallying hard — when the
+  beaten-down loser leg squeezes upward (Daniel & Moskowitz).
+- **Signal (regime)**: SPY ≥10% below its 252-day high **and** SPY 21-day
+  return > +5% → `adverse`. Both thresholds fixed a priori.
+- **Expected direction**: the most negative momentum ICs of any state;
+  expected rare.
+- **Date registered**: 2026-08-19. **Result**: pending.
+
+## R-015 — Dispersion regime
+
+- **Hypothesis**: unusually wide cross-sectional dispersion marks unstable
+  leadership; ranking today's winners is less informative about tomorrow's.
+- **Signal (regime)**: interquartile range of the universe's 63-day returns
+  above its own **expanding median of past rebalance dates** → `adverse`.
+  Adaptive but strictly point-in-time — each date's threshold uses only
+  earlier dates; nothing is fitted on the full sample.
+- **Expected direction**: momentum ICs in `adverse` < `normal`.
+- **Date registered**: 2026-08-19. **Result**: pending.

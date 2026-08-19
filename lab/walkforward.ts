@@ -2,6 +2,11 @@ import { returnBetween, valueOrNull } from '../src/engine/index.ts'
 import type { Closes } from '../src/engine/index.ts'
 import { decileMeans, monotonicity, spearman, summarise, turnover } from './stats.ts'
 import { ALL_SIGNAL_IDS, signalPercentiles, type SecurityContext } from './signals.ts'
+import {
+  crossSectionalDispersion,
+  regimeDefinitions,
+  type RegimeState,
+} from './regimes.ts'
 
 /**
  * Walk-forward evaluation.
@@ -54,6 +59,14 @@ export interface SignalHorizonResult {
   /** Mean top-decile minus bottom-decile forward return per period. */
   readonly spread: number | null
   readonly byYear: Readonly<Record<string, { n: number; mean: number | null }>>
+  /**
+   * The same per-date ICs grouped by each regime definition's state on the
+   * signal date (R-011…R-015). The question a definition must answer: are
+   * `adverse` dates where this signal stops working?
+   */
+  readonly byRegime: Readonly<
+    Record<string, Partial<Record<RegimeState, { n: number; mean: number | null; tStat: number | null }>>>
+  >
 }
 
 export interface SignalResult {
@@ -67,17 +80,25 @@ export interface WalkForwardReport {
   readonly universeSize: number
   readonly config: WalkForwardConfig
   readonly signals: readonly SignalResult[]
+  /** Dates per state and state changes per definition — is the regime a
+   * standable environment or a strobe light? */
+  readonly regimes: Readonly<
+    Record<string, { counts: Partial<Record<RegimeState, number>>; flips: number }>
+  >
 }
 
 export interface LabUniverse {
   readonly calendar: readonly string[]
   readonly securities: readonly SecurityContext[]
+  /** The market benchmark (SPY) on the same calendar, for regime rules. */
+  readonly market?: Closes
 }
 
 interface DateObservation {
   readonly date: string
   readonly ic: number
   readonly curve: readonly (number | null)[]
+  readonly regimes: Readonly<Record<string, RegimeState | null>>
 }
 
 export function walkForward(
@@ -104,9 +125,24 @@ export function walkForward(
   const key = (signal: string, horizon: number) => `${signal}@${horizon}`
   const usedDates: string[] = []
 
+  // Regime classification per date. The dispersion history is filled in
+  // anchor order, so R-015's expanding median only ever sees earlier dates.
+  const closesByTicker = new Map(securities.map((s) => [s.ticker, s.closes]))
+  const dispersionHistory = new Map<number, number>()
+  const definitions = universe.market
+    ? regimeDefinitions({ market: universe.market, dispersionHistory })
+    : []
+  const regimeStates = new Map<number, Record<string, RegimeState | null>>()
+
   for (const anchor of anchors) {
     const date = calendar[anchor] as string
     const cross = signalPercentiles(securities, anchor)
+
+    const dispersion = crossSectionalDispersion(closesByTicker, anchor)
+    if (dispersion !== null) dispersionHistory.set(anchor, dispersion)
+    const states: Record<string, RegimeState | null> = {}
+    for (const definition of definitions) states[definition.id] = definition.classify(anchor)
+    regimeStates.set(anchor, states)
 
     const forwardByHorizon = new Map<number, Map<string, number>>()
     for (const h of config.horizons) {
@@ -153,7 +189,7 @@ export function walkForward(
         const ic = spearman(xs, ys)
         if (ic === null) continue
         const k = key(signal, h)
-        const observation: DateObservation = { date, ic, curve: decileMeans(pairs) }
+        const observation: DateObservation = { date, ic, curve: decileMeans(pairs), regimes: states }
         const list = perSignalHorizon.get(k)
         if (list) list.push(observation)
         else perSignalHorizon.set(k, [observation])
@@ -172,6 +208,24 @@ export function walkForward(
         const s = summarise(ics)
         byYear[year] = { n: s.n, mean: s.mean }
       }
+      const byRegime: Record<
+        string,
+        Partial<Record<RegimeState, { n: number; mean: number | null; tStat: number | null }>>
+      > = {}
+      for (const definition of definitions) {
+        const perState: Partial<
+          Record<RegimeState, { n: number; mean: number | null; tStat: number | null }>
+        > = {}
+        for (const state of ['normal', 'adverse'] as const) {
+          const ics = observations
+            .filter((o) => o.regimes[definition.id] === state)
+            .map((o) => o.ic)
+          if (ics.length === 0) continue
+          const s = summarise(ics)
+          perState[state] = { n: s.n, mean: s.mean, tStat: s.tStat }
+        }
+        byRegime[definition.id] = perState
+      }
       return {
         signal,
         horizon,
@@ -181,6 +235,7 @@ export function walkForward(
         monotonicity: monotonicity(curve),
         spread: top !== null && bottom !== null ? top - bottom : null,
         byYear,
+        byRegime,
       }
     })
     const t = turnovers.get(signal) ?? []
@@ -191,7 +246,23 @@ export function walkForward(
     }
   })
 
-  return { dates: usedDates, universeSize: securities.length, config, signals }
+  const regimes: Record<string, { counts: Partial<Record<RegimeState, number>>; flips: number }> =
+    {}
+  for (const definition of definitions) {
+    const counts: Partial<Record<RegimeState, number>> = {}
+    let flips = 0
+    let previous: RegimeState | null = null
+    for (const anchor of anchors) {
+      const state = regimeStates.get(anchor)?.[definition.id] ?? null
+      if (state === null) continue
+      counts[state] = (counts[state] ?? 0) + 1
+      if (previous !== null && state !== previous) flips++
+      previous = state
+    }
+    regimes[definition.id] = { counts, flips }
+  }
+
+  return { dates: usedDates, universeSize: securities.length, config, signals, regimes }
 }
 
 function averageCurves(curves: readonly (readonly (number | null)[])[]): (number | null)[] {

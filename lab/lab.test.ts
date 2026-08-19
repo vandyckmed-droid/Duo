@@ -195,3 +195,113 @@ describe('walkForward', () => {
     expect(momentum?.meanTopDecileTurnover as number).toBeLessThan(0.35)
   })
 })
+
+import { crossSectionalDispersion, regimeDefinitions } from './regimes.ts'
+import type { Closes } from '../src/engine/index.ts'
+
+/** A market path from piecewise daily rates, starting at 100. */
+function path(...segments: { days: number; rate: number }[]): (number | null)[] {
+  const out: (number | null)[] = [100]
+  for (const { days, rate } of segments) {
+    for (let i = 0; i < days; i++) out.push((out[out.length - 1] as number) * (1 + rate))
+  }
+  return out
+}
+
+describe('regimeDefinitions', () => {
+  const definitions = (market: Closes, dispersion = new Map<number, number>()) =>
+    new Map(regimeDefinitions({ market, dispersionHistory: dispersion }).map((d) => [d.id, d]))
+
+  it('drawdown: adverse only below 90% of the trailing high', () => {
+    // 300 flat days, then a fall to 85 over ~11 days.
+    const market = path({ days: 300, rate: 0 }, { days: 11, rate: -0.0146 })
+    const d = definitions(market).get('drawdown')
+    expect(d?.classify(300)).toBe('normal')
+    expect(d?.classify(market.length - 1)).toBe('adverse')
+  })
+
+  it('trend: adverse when the 126-day market return is negative', () => {
+    const d = definitions(path({ days: 300, rate: -0.001 })).get('trend')
+    expect(d?.classify(299)).toBe('adverse')
+    const u = definitions(path({ days: 300, rate: 0.001 })).get('trend')
+    expect(u?.classify(299)).toBe('normal')
+  })
+
+  it('volatility: adverse above 20% annualised', () => {
+    // Alternating ±2% daily is ~32% annualised; ±0.5% is ~8%.
+    const wild = path(...Array.from({ length: 150 }, (_, i) => ({ days: 1, rate: i % 2 ? 0.02 : -0.02 })))
+    const calm = path(...Array.from({ length: 150 }, (_, i) => ({ days: 1, rate: i % 2 ? 0.005 : -0.005 })))
+    expect(definitions(wild).get('volatility')?.classify(149)).toBe('adverse')
+    expect(definitions(calm).get('volatility')?.classify(149)).toBe('normal')
+  })
+
+  it('rebound: adverse only when still deep below the high AND rallying hard', () => {
+    // Crash of ~30%, then a sharp +8% rebound in a month: the crash signature.
+    const rebound = path({ days: 300, rate: 0 }, { days: 30, rate: -0.012 }, { days: 21, rate: 0.004 })
+    const d = definitions(rebound).get('rebound')
+    expect(d?.classify(rebound.length - 1)).toBe('adverse')
+    // The same rally near the high is not the signature.
+    const nearHigh = path({ days: 300, rate: 0 }, { days: 21, rate: 0.004 })
+    expect(definitions(nearHigh).get('rebound')?.classify(nearHigh.length - 1)).toBe('normal')
+  })
+
+  it('dispersion: refuses to classify without enough history, then compares to the expanding median', () => {
+    const market = path({ days: 400, rate: 0.0005 })
+    const history = new Map<number, number>()
+    for (let i = 0; i < 12; i++) history.set(280 + i, 0.1)
+    history.set(292, 0.3)
+    history.set(293, 0.05)
+    // A future entry must not affect an earlier classification.
+    history.set(399, 9)
+    const d = definitions(market, history).get('dispersion')
+    expect(d?.classify(281)).toBeNull() // only 1 earlier date
+    expect(d?.classify(292)).toBe('adverse') // 0.3 > median(0.1…)
+    expect(d?.classify(293)).toBe('normal') // 0.05 < median
+  })
+})
+
+describe('crossSectionalDispersion', () => {
+  it('is the IQR of the universe 63-day returns', () => {
+    // 200 flat names and 200 strong names: IQR spans the gap.
+    const closes = new Map<string, Closes>()
+    for (let i = 0; i < 200; i++) closes.set(`F${i}`, path({ days: 100, rate: 0 }))
+    for (let i = 0; i < 200; i++) closes.set(`S${i}`, path({ days: 100, rate: 0.002 }))
+    const d = crossSectionalDispersion(closes, 99)
+    expect(d).not.toBeNull()
+    expect(d as number).toBeGreaterThan(0.1)
+  })
+
+  it('refuses a thin cross-section', () => {
+    const closes = new Map<string, Closes>([['A', path({ days: 100, rate: 0 })]])
+    expect(crossSectionalDispersion(closes, 99)).toBeNull()
+  })
+})
+
+describe('walkForward with regimes', () => {
+  it('groups per-date ICs by regime state and reports prevalence', () => {
+    const { calendar, securities } = syntheticUniverse(30, 650)
+    // Market: rises 300 days, then falls — trend flips to adverse partway.
+    const market = path({ days: 320, rate: 0.001 }, { days: 329, rate: -0.001 })
+    const report = walkForward(
+      { calendar, securities, market },
+      { step: 21, horizons: [21], minCrossSection: 20 },
+    )
+    const trend = report.regimes['trend']
+    expect(trend).toBeDefined()
+    expect((trend?.counts.normal ?? 0) + (trend?.counts.adverse ?? 0)).toBe(report.dates.length)
+    expect(trend?.counts.adverse ?? 0).toBeGreaterThan(0)
+    const momentum = report.signals.find((s) => s.signal === '12M')?.horizons[0]
+    const split = momentum?.byRegime['trend']
+    const n = (split?.normal?.n ?? 0) + (split?.adverse?.n ?? 0)
+    expect(n).toBe(momentum?.ic.n)
+  })
+
+  it('runs without a market series and reports no regimes', () => {
+    const { calendar, securities } = syntheticUniverse(24, 650)
+    const report = walkForward(
+      { calendar, securities },
+      { step: 21, horizons: [21], minCrossSection: 20 },
+    )
+    expect(Object.keys(report.regimes)).toHaveLength(0)
+  })
+})
