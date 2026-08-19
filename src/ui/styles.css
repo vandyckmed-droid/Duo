@@ -299,15 +299,20 @@ button {
 
 .watch-mark {
   width: 3px;
-  height: 30px;
+  height: 40px;
   border-radius: 2px;
-  background: transparent;
-  transition: background-color 120ms ease, height 120ms ease;
+  background: var(--accent);
 }
 
-.watch[aria-pressed='true'] .watch-mark {
-  background: var(--accent);
-  height: 40px;
+/* The add affordance: a faint plus where the accent bar will appear. Quiet
+   enough not to compete with the rank, present enough that adding from the
+   list is discoverable at all. */
+.watch-plus {
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-faint);
+  transform: translateY(-1px);
 }
 
 .rank {
