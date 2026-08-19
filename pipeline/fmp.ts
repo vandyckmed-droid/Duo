@@ -77,6 +77,20 @@ export interface Constituent {
   readonly industry: string
 }
 
+/**
+ * One earnings announcement. `date` is the announcement date — the day the
+ * numbers became public information — which is what makes point-in-time use
+ * possible. Estimates are the consensus as it stood at announcement; either
+ * side may be absent for small names.
+ */
+export interface EarningsEvent {
+  readonly date: string
+  readonly epsActual: number | null
+  readonly epsEstimated: number | null
+  readonly revenueActual: number | null
+  readonly revenueEstimated: number | null
+}
+
 export class Fmp {
   private readonly key: string
   readonly concurrency: number
@@ -296,6 +310,32 @@ export class Fmp {
     return [...byDate]
       .map(([date, close]) => ({ date, close }))
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  }
+
+  /**
+   * Earnings announcements for one symbol, oldest first. One announcement per
+   * date — the provider occasionally repeats a row, and keeping the last
+   * occurrence matches how it orders corrections.
+   */
+  async earnings(symbol: string, limit = 80): Promise<EarningsEvent[]> {
+    const body = await this.get('earnings', { symbol, limit: String(limit) })
+    if (!Array.isArray(body)) throw new FmpError(`${symbol}: unexpected payload`)
+
+    const byDate = new Map<string, EarningsEvent>()
+    for (const row of body) {
+      if (!row || typeof row !== 'object') continue
+      const r = row as Record<string, unknown>
+      const date = String(r['date'] ?? '').slice(0, 10)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
+      byDate.set(date, {
+        date,
+        epsActual: num(r['epsActual']),
+        epsEstimated: num(r['epsEstimated']),
+        revenueActual: num(r['revenueActual']),
+        revenueEstimated: num(r['revenueEstimated']),
+      })
+    }
+    return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   }
 }
 

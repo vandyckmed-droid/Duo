@@ -7,6 +7,7 @@ import {
   resolveSegmentConflicts,
   resolveShareClasses,
 } from '../pipeline/membership.ts'
+import { EarningsCache, refreshEarnings } from './earnings.ts'
 import { alignToCalendar } from '../pipeline/compute.ts'
 import { lastValidIndex, observationCount } from '../src/engine/index.ts'
 import { BENCHMARK_TICKERS, benchmarkFor } from '../src/domain/segments.ts'
@@ -33,6 +34,8 @@ import type { SecurityContext } from './signals.ts'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const LAB_CACHE_DIR = process.env['LAB_CACHE_DIR'] ?? resolve(ROOT, '.cache/lab-prices')
+const EARNINGS_CACHE_DIR =
+  process.env['LAB_EARNINGS_DIR'] ?? resolve(ROOT, '.cache/lab-earnings')
 const OUT_DIR = process.env['LAB_OUT_DIR'] ?? resolve(ROOT, '.lab')
 
 /** Deep-history floor: probed available back to at least 2016. */
@@ -71,6 +74,19 @@ async function main(): Promise<void> {
   const failed = [...outcomes.values()].filter((o) => o.error)
   log(`  ${failed.length} tickers kept from cache after a failed request`)
 
+  log('Refreshing earnings announcements…')
+  const earningsCache = new EarningsCache(EARNINGS_CACHE_DIR)
+  const earningsByTicker = await refreshEarnings(
+    earningsCache,
+    fmp,
+    candidates.map((m) => m.ticker),
+    (done, total) => {
+      if (done % 300 === 0 || done === total) log(`  ${done}/${total}`)
+    },
+  )
+  const withEarnings = [...earningsByTicker.values()].filter((e) => e.length > 0).length
+  log(`  ${withEarnings} tickers with announcement history`)
+
   log('Aligning to the benchmark calendar…')
   const benchmarkPoints = new Map<string, PricePoint[]>()
   for (const ticker of BENCHMARK_TICKERS) {
@@ -101,13 +117,18 @@ async function main(): Promise<void> {
   )
   log(`  ${eligible.length} eligible after share-class resolution`)
 
-  const securities: SecurityContext[] = eligible.map((m) => ({
-    ticker: m.ticker,
-    closes: aligned.closes.get(m.ticker) ?? [],
-    benchmark: aligned.closes.get(benchmarkFor(m.segment)) ?? [],
-    sector: m.sector || 'Unknown',
-    industry: m.industry || 'Unknown',
-  }))
+  const securities: SecurityContext[] = eligible.map((m) => {
+    const earnings = earningsByTicker.get(m.ticker) ?? []
+    return {
+      ticker: m.ticker,
+      calendar: aligned.calendar,
+      closes: aligned.closes.get(m.ticker) ?? [],
+      benchmark: aligned.closes.get(benchmarkFor(m.segment)) ?? [],
+      sector: m.sector || 'Unknown',
+      industry: m.industry || 'Unknown',
+      ...(earnings.length > 0 ? { earnings } : {}),
+    }
+  })
   const market = aligned.closes.get('SPY')
   if (!market) throw new Error('SPY is not in the aligned dataset')
   const universe: LabUniverse = { calendar: aligned.calendar, securities, market }

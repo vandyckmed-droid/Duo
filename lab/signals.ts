@@ -1,14 +1,17 @@
 import {
   beta as fitBeta,
   distanceFromHigh,
+  endpointAt,
   positiveDayShare,
   residualReturn,
   timeNearHigh,
   topDayConcentration,
   valueOrNull,
   windowReturn,
+  type Calendar,
   type Closes,
 } from '../src/engine/index.ts'
+import type { EarningsEvent } from '../pipeline/fmp.ts'
 import { BETA_LOOKBACK, WINDOWS } from '../src/domain/windows.ts'
 import { FAMILY_WEIGHTS, compositeScore } from '../src/domain/alpha.ts'
 import { groupPercentiles, meanPercentile, percentiles } from '../src/domain/crossSection.ts'
@@ -31,10 +34,14 @@ import { groupPercentiles, meanPercentile, percentiles } from '../src/domain/cro
 
 export interface SecurityContext {
   readonly ticker: string
+  readonly calendar: Calendar
   readonly closes: Closes
   readonly benchmark: Closes
   readonly sector: string
   readonly industry: string
+  /** Announcement-dated earnings events, oldest first; absent for names the
+   * provider has nothing for. */
+  readonly earnings?: readonly EarningsEvent[]
 }
 
 export interface BaseSignal {
@@ -45,6 +52,47 @@ export interface BaseSignal {
 }
 
 const PATH_LOOKBACK = 252
+
+/** How stale an announcement may be and still carry a drift signal. */
+const EARNINGS_MAX_AGE = 63
+
+/** First calendar index at or after an ISO date, or -1 past the end. */
+function calendarIndexOf(calendar: Calendar, date: string): number {
+  let lo = 0
+  let hi = calendar.length - 1
+  if (hi < 0 || (calendar[hi] as string) < date) return -1
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if ((calendar[mid] as string) < date) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+/**
+ * The latest announcement that was public knowledge at the anchor and recent
+ * enough to still be news. Point-in-time by construction: only events whose
+ * announcement date is on or before the anchor's calendar date qualify, and
+ * the announcement's own trading day must sit within EARNINGS_MAX_AGE days.
+ */
+function latestAnnouncement(
+  security: SecurityContext,
+  anchor: number,
+): { event: EarningsEvent; index: number } | null {
+  const events = security.earnings
+  if (!events || events.length === 0) return null
+  const anchorDate = security.calendar[anchor]
+  if (anchorDate === undefined) return null
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i] as EarningsEvent
+    if (event.date > anchorDate) continue
+    const index = calendarIndexOf(security.calendar, event.date)
+    if (index < 0 || index > anchor) return null
+    if (anchor - index > EARNINGS_MAX_AGE) return null
+    return { event, index }
+  }
+  return null
+}
 
 export const BASE_SIGNALS: readonly BaseSignal[] = [
   {
@@ -100,6 +148,38 @@ export const BASE_SIGNALS: readonly BaseSignal[] = [
     id: 'time-near-high',
     direction: 'desc',
     value: (s, anchor) => valueOrNull(timeNearHigh(s.closes, PATH_LOOKBACK, 63, 0.05, anchor)),
+  },
+  {
+    // R-017: latest surprise, scaled by the announcement-day price so a
+    // penny-estimate name cannot explode the ratio.
+    id: 'eps-surprise',
+    direction: 'desc',
+    value: (s, anchor) => {
+      const latest = latestAnnouncement(s, anchor)
+      if (!latest) return null
+      const { epsActual, epsEstimated } = latest.event
+      if (epsActual === null || epsEstimated === null) return null
+      const price = endpointAt(s.closes, latest.index)
+      if (!price.ok) return null
+      return (epsActual - epsEstimated) / price.value.close
+    },
+  },
+  {
+    // R-018: the market's own two-day verdict on the announcement — close
+    // before it to close after it, covering both before-open and after-close
+    // releases. Requires the day after to have closed, so an announcement on
+    // the anchor itself is not yet measurable (no forward reach).
+    id: 'earnings-reaction',
+    direction: 'desc',
+    value: (s, anchor) => {
+      const latest = latestAnnouncement(s, anchor)
+      if (!latest || latest.index + 1 > anchor || latest.index < 1) return null
+      const before = endpointAt(s.closes, latest.index - 1)
+      const after = endpointAt(s.closes, latest.index + 1)
+      if (!before.ok || !after.ok) return null
+      if (after.value.index <= before.value.index) return null
+      return after.value.close / before.value.close - 1
+    },
   },
 ]
 

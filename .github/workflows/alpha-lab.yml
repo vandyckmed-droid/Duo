@@ -58,7 +58,9 @@ jobs:
       - name: Restore the deep price cache
         uses: actions/cache@v4
         with:
-          path: .cache/lab-prices
+          path: |
+            .cache/lab-prices
+            .cache/lab-earnings
           key: lab-prices-deep2005-${{ github.run_id }}
           restore-keys: |
             lab-prices-deep2005-

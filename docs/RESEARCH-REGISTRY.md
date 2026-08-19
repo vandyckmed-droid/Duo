@@ -217,3 +217,30 @@ Schema per entry:
 - **Expected direction**: drawdown split widens in count and holds in sign;
   rebound accumulates enough dates to be judged at all.
 - **Date registered**: 2026-08-19. **Result**: pending.
+
+## R-017 — Quarterly EPS surprise
+
+- **Hypothesis**: markets underreact to earnings news; a positive surprise
+  predicts continued outperformance over the following weeks (the PEAD
+  literature's first leg).
+- **Signal**: latest earnings announcement within the trailing 63 trading
+  days with both actual and estimated EPS; value = (epsActual −
+  epsEstimated) / announcement-day close. Price-scaling keeps near-zero
+  estimates from exploding the ratio. Names with no qualifying announcement
+  are unmeasured, never defaulted. Announcements are used only from their
+  announcement date (`earnings.date`), per docs/DATA-LIMITATIONS.md.
+- **Expected direction**: positive forward IC at 21/63d.
+- **Date registered**: 2026-08-19. **Result**: pending.
+
+## R-018 — Earnings announcement reaction
+
+- **Hypothesis**: the market's own immediate verdict on an announcement
+  (which prices whatever the estimate missed) drifts: a strong two-day
+  reaction continues, capturing underreaction beyond the headline surprise.
+- **Signal**: return from the close before the latest announcement (within
+  63 trading days) to the close after it — the two-day announcement-window
+  move, point-in-time by announcement date.
+- **Expected direction**: positive forward IC at 21/63d; expected to
+  complement rather than duplicate R-017 (tested by their correlation and,
+  if both survive, ablation).
+- **Date registered**: 2026-08-19. **Result**: pending.

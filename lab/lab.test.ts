@@ -106,6 +106,7 @@ function syntheticUniverse(names: number, days: number, seed = 7): {
     }
     securities.push({
       ticker: `T${String(n).padStart(3, '0')}`,
+      calendar,
       closes,
       benchmark,
       sector: `S${n % 3}`,
@@ -303,5 +304,141 @@ describe('walkForward with regimes', () => {
       { step: 21, horizons: [21], minCrossSection: 20 },
     )
     expect(Object.keys(report.regimes)).toHaveLength(0)
+  })
+})
+
+import { EarningsCache, mergeEvents, refreshEarnings } from './earnings.ts'
+import { BASE_SIGNALS } from './signals.ts'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join as joinPath } from 'node:path'
+
+const signal = (id: string) => {
+  const s = BASE_SIGNALS.find((b) => b.id === id)
+  if (!s) throw new Error(id)
+  return s
+}
+
+/** A flat 200-day security with one earnings pop on day 150. */
+function earningsSecurity(overrides: Partial<SecurityContext> = {}): SecurityContext {
+  const calendar = Array.from({ length: 200 }, (_, i) => {
+    const d = new Date(Date.UTC(2024, 0, 7))
+    d.setUTCDate(d.getUTCDate() + i)
+    return d.toISOString().slice(0, 10)
+  })
+  const closes: (number | null)[] = Array.from({ length: 200 }, () => 100)
+  // Announcement on day 150's date: price steps to 110 on the day after.
+  for (let i = 151; i < 200; i++) closes[i] = 110
+  return {
+    ticker: 'ERN',
+    calendar,
+    closes,
+    benchmark: closes,
+    sector: 'S',
+    industry: 'I',
+    earnings: [
+      { date: calendar[80] as string, epsActual: 1.0, epsEstimated: 1.1, revenueActual: null, revenueEstimated: null },
+      { date: calendar[150] as string, epsActual: 1.5, epsEstimated: 1.0, revenueActual: null, revenueEstimated: null },
+    ],
+    ...overrides,
+  }
+}
+
+describe('earnings signals', () => {
+  it('eps-surprise is the latest surprise scaled by the announcement-day price', () => {
+    const s = earningsSecurity()
+    expect(signal('eps-surprise').value(s, 170)).toBeCloseTo(0.5 / 100, 10)
+  })
+
+  it('never sees an announcement after the anchor', () => {
+    const s = earningsSecurity()
+    // At day 140 the day-150 announcement does not exist yet, so the day-80
+    // one (age 60, inside the window) is the signal — the negative surprise.
+    expect(signal('eps-surprise').value(s, 140)).toBeCloseTo(-0.1 / 100, 10)
+    // One day past the window (age 64) it is stale and yields nothing.
+    expect(signal('eps-surprise').value(s, 144)).toBeNull()
+  })
+
+  it('a stale latest announcement yields nothing rather than an old one', () => {
+    const s = earningsSecurity()
+    // 64+ trading days after day 150: too old.
+    expect(signal('eps-surprise').value(s, 150 + 64)).toBeNull()
+  })
+
+  it('earnings-reaction is the two-day move around the announcement', () => {
+    const s = earningsSecurity()
+    // close[149]=100 → close[151]=110.
+    expect(signal('earnings-reaction').value(s, 170)).toBeCloseTo(0.1, 10)
+  })
+
+  it('reaction is unmeasurable on the announcement day itself', () => {
+    const s = earningsSecurity()
+    expect(signal('earnings-reaction').value(s, 150)).toBeNull()
+    expect(signal('earnings-reaction').value(s, 151)).not.toBeNull()
+  })
+
+  it('missing estimates yield nothing, never zero', () => {
+    const s = earningsSecurity({
+      earnings: [
+        { date: '2024-06-01', epsActual: 1.5, epsEstimated: null, revenueActual: null, revenueEstimated: null },
+      ],
+    })
+    expect(signal('eps-surprise').value(s, 170)).toBeNull()
+  })
+})
+
+describe('earnings cache', () => {
+  it('merges by date with fresh rows winning and history never lost', () => {
+    const merged = mergeEvents(
+      [
+        { date: '2024-01-01', epsActual: 1, epsEstimated: 1, revenueActual: null, revenueEstimated: null },
+        { date: '2024-04-01', epsActual: null, epsEstimated: 1, revenueActual: null, revenueEstimated: null },
+      ],
+      [
+        { date: '2024-04-01', epsActual: 2, epsEstimated: 1, revenueActual: null, revenueEstimated: null },
+        { date: '2024-07-01', epsActual: 3, epsEstimated: 2, revenueActual: null, revenueEstimated: null },
+      ],
+    )
+    expect(merged.map((e) => e.date)).toEqual(['2024-01-01', '2024-04-01', '2024-07-01'])
+    expect(merged[1]?.epsActual).toBe(2)
+  })
+
+  it('a failed request keeps the cached events', async () => {
+    const dir = await mkdtemp(joinPath(tmpdir(), 'earn-'))
+    const cache = new EarningsCache(dir)
+    await cache.ensure()
+    await cache.write({
+      ticker: 'KEEP',
+      refreshedAt: '2020-01-01',
+      events: [
+        { date: '2019-11-01', epsActual: 1, epsEstimated: 1, revenueActual: null, revenueEstimated: null },
+      ],
+    })
+    const failing = {
+      concurrency: 2,
+      earnings: async () => {
+        throw new Error('provider down')
+      },
+    }
+    const result = await refreshEarnings(cache, failing as never, ['KEEP'])
+    expect(result.get('KEEP')).toHaveLength(1)
+  })
+
+  it('skips tickers already refreshed today', async () => {
+    const dir = await mkdtemp(joinPath(tmpdir(), 'earn-'))
+    const cache = new EarningsCache(dir)
+    await cache.ensure()
+    const today = new Date().toISOString().slice(0, 10)
+    await cache.write({ ticker: 'FRESH', refreshedAt: today, events: [] })
+    let calls = 0
+    const counting = {
+      concurrency: 2,
+      earnings: async () => {
+        calls++
+        return []
+      },
+    }
+    await refreshEarnings(cache, counting as never, ['FRESH'])
+    expect(calls).toBe(0)
   })
 })
