@@ -44,7 +44,11 @@ function RankedRowImpl({ row, metric, watched, onOpen, onToggleWatch, top, heigh
         aria-label={`${watched ? 'Remove' : 'Add'} ${security.ticker} ${watched ? 'from' : 'to'} watchlist`}
         onClick={() => onToggleWatch(security.ticker)}
       >
-        <span className="watch-mark" />
+        {/* Watched: the accent bar at the screen edge. Unwatched: a faint
+            plus — the invisible-until-filled marker read as "no control
+            here", and a list you cannot visibly add from is a list you
+            cannot add from. */}
+        {watched ? <span className="watch-mark" /> : <span className="watch-plus">+</span>}
       </button>
 
       <button className="row-open" onClick={() => onOpen(security.ticker)}>
