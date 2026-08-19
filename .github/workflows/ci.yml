@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The financial mathematics is the part that cannot be wrong. It runs
+      # without a network or an API key, so it gates every pull request.
+      - name: Test
+        run: npm run test
+
+      # Builds without a dataset present, which is the point: the published
+      # JSON is produced by the refresh workflow, never committed.
+      - name: Build
+        run: npm run build
+
+      - name: Assert no credential reached the bundle
+        run: |
+          if grep -rIl -E "FMP_API_KEY|financialmodelingprep\.com|apikey=" dist/assets dist/index.html; then
+            echo "::error::A provider reference or key leaked into the client bundle."
+            exit 1
+          fi
+          echo "Client bundle contains no provider host, key name, or apikey parameter."
