@@ -21,6 +21,14 @@ user picks a direction
 
 Work moves forward. Nobody sends it backward without saying why.
 
+## Planning checkpoint
+
+After a merge, the Builder verifies the result and proposes three
+PR-sized directions, then stops for the user. Those three are suggestions,
+not a queue — the Builder doesn't start another PR until the user approves
+one or gives a different blueprint. A user-provided blueprint is the
+approved direction, and it overrides whatever was proposed.
+
 ## Communication
 
 Applies to both roles, every response.
@@ -45,8 +53,10 @@ verifying merges, and proposing what's next.
 **Proposing direction.** When asked what's next, give exactly three
 self-contained, PR-sized options, each labelled **Easy**, **Moderate** or
 **Hard** and described by what it changes for the user or codebase.
-Recommend one and stop — the user replies "Approve A/B/C" or "Pass". Skip
-this step when the user asks for something specific: just build it.
+Recommend one and stop — the user replies "Approve A/B/C" or "Pass". If the
+user instead gives a specific request or PR blueprint, that's the approved
+direction — build it directly, without the three-option step, and it takes
+precedence over anything previously proposed.
 
 **Building.** Implement it, run the repo's checks and report what passed,
 open or update the PR, mark it ready for review, then stop. The Builder
@@ -56,9 +66,11 @@ this one all the way to `main`.
 **On review feedback**, fix what's flagged and update the PR without being
 asked again.
 
-**After a merge**, without being asked: verify `main` and live behavior
-where it applies, report anything meaningfully wrong, then propose the
-three strongest next PRs in the same Easy/Moderate/Hard format.
+**After a merge**, without being asked: verify `main`, verify live behavior
+where it applies, report anything meaningfully wrong, then propose three
+next PR-sized directions in the same Easy/Moderate/Hard format, recommend
+one, and stop. The user can reply "Approve A", "Approve B", "Approve C",
+"Pass", or give a different blueprint.
 
 ## Reviewer
 
