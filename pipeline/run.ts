@@ -1,8 +1,15 @@
 import { resolve } from 'node:path'
 import { Fmp, readApiKey, type PricePoint } from './fmp.ts'
 import { PriceCache, refresh } from './cache.ts'
-import { applyEligibility, resolveMembership, type Member } from './membership.ts'
+import {
+  resolveMembership,
+  resolveSegmentConflicts,
+  resolveShareClasses,
+  type Exclusion,
+  type Member,
+} from './membership.ts'
 import { alignToCalendar, computeUniverse, type ComputeInput } from './compute.ts'
+import { lastValidIndex, observationCount } from '../src/engine/index.ts'
 import { hasErrors, validate } from './validate.ts'
 import { publish } from './publish.ts'
 import { DATASET_VERSION, type Manifest } from '../src/domain/dataset.ts'
@@ -63,17 +70,20 @@ async function main(): Promise<void> {
   const quotes = await fmp.quotes([...new Set(membership.members.map((m) => m.ticker))])
   const marketCapOf = (ticker: string) => quotes.get(ticker)?.marketCap ?? null
 
-  const { eligible, excluded } = applyEligibility(membership.members, marketCapOf)
-  log(`  ${eligible.length} eligible, ${excluded.length} excluded`)
+  // First pass: one segment per ticker. Share classes are left in for now —
+  // deciding between them needs the price history that has not been fetched
+  // yet, and fetching both costs a handful of requests.
+  const conflicts = resolveSegmentConflicts(membership.members)
+  log(`  ${conflicts.members.length} candidates, ${conflicts.excluded.length} segment conflicts`)
 
-  const universe = limit > 0 ? capPerSegment(eligible, limit) : eligible
-  if (universe.length !== eligible.length) {
-    log(`  capped to ${universe.length} (DUO_MAX_PER_SEGMENT=${limit})`)
+  const candidates = limit > 0 ? capPerSegment(conflicts.members, limit) : conflicts.members
+  if (candidates.length !== conflicts.members.length) {
+    log(`  capped to ${candidates.length} (DUO_MAX_PER_SEGMENT=${limit})`)
   }
 
   log(`Refreshing prices (${coldStart} → ${to})…`)
   const cache = new PriceCache(CACHE_DIR)
-  const tickers = [...universe.map((m) => m.ticker), ...BENCHMARK_TICKERS]
+  const tickers = [...candidates.map((m) => m.ticker), ...BENCHMARK_TICKERS]
   const outcomes = await refresh(cache, fmp, tickers, {
     from: coldStart,
     to,
@@ -102,7 +112,7 @@ async function main(): Promise<void> {
   }
 
   const securityPoints = new Map<string, PricePoint[]>()
-  for (const member of universe) {
+  for (const member of candidates) {
     const series = await cache.read(member.ticker)
     if (series && series.points.length > 0) securityPoints.set(member.ticker, series.points)
   }
@@ -118,6 +128,23 @@ async function main(): Promise<void> {
   const benchmarks = new Map(
     BENCHMARK_TICKERS.map((t) => [t, aligned.closes.get(t) ?? []] as const),
   )
+
+  // Second pass, now that there is evidence: pick the share class that is
+  // actually trading, and drop what has stopped.
+  const anchor = aligned.calendar.length - 1
+  const evidenceOf = (ticker: string) => {
+    const closes = aligned.closes.get(ticker) ?? []
+    const last = lastValidIndex(closes)
+    return {
+      staleness: last < 0 ? Number.POSITIVE_INFINITY : anchor - last,
+      observations: observationCount(closes),
+      marketCap: marketCapOf(ticker),
+    }
+  }
+  const { eligible: universe, excluded: ineligible } = resolveShareClasses(candidates, evidenceOf)
+  const excluded: Exclusion[] = [...conflicts.excluded, ...ineligible]
+  log(`  ${universe.length} eligible, ${ineligible.length} dropped after seeing their prices`)
+  for (const e of ineligible.slice(0, 8)) log(`    ${e.ticker}: ${e.reason}`)
 
   log('Computing analytics…')
   const inputs: ComputeInput[] = universe.map((member) => ({

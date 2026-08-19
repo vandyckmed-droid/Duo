@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
-  applyEligibility,
+  MAX_STALENESS,
   companyKey,
   normaliseTicker,
   parseConstituentsTable,
+  resolveSegmentConflicts,
+  resolveShareClasses,
   type Member,
+  type PriceEvidence,
 } from './membership.ts'
 import { fetchFrom, mergePoints } from './cache.ts'
 import { Fmp, readApiKey } from './fmp.ts'
@@ -59,7 +62,7 @@ describe('parseConstituentsTable', () => {
   })
 })
 
-describe('applyEligibility', () => {
+describe('eligibility', () => {
   const member = (ticker: string, name: string, segment: Member['segment']): Member => ({
     ticker,
     name,
@@ -68,51 +71,125 @@ describe('applyEligibility', () => {
     industry: 'Banks',
   })
 
-  it('keeps the larger segment when a ticker appears in two', () => {
-    // Membership churn: a name promoted out of the 600 can linger in a stale
-    // list. Keeping both would rank it twice, against two different benchmarks.
-    const { eligible, excluded } = applyEligibility(
-      [member('XYZ', 'Xyz Inc.', '600'), member('XYZ', 'Xyz Inc.', '500')],
-      () => 1e9,
-    )
-    expect(eligible).toHaveLength(1)
-    expect(eligible[0]?.segment).toBe('500')
-    expect(excluded[0]?.reason).toContain('600')
+  const evidence = (
+    overrides: Record<string, Partial<PriceEvidence>>,
+  ): ((t: string) => PriceEvidence) => {
+    const base: PriceEvidence = { staleness: 0, observations: 800, marketCap: 1e9 }
+    return (ticker) => ({ ...base, ...(overrides[ticker] ?? {}) })
+  }
+
+  describe('resolveSegmentConflicts', () => {
+    it('keeps the larger segment when a ticker appears in two', () => {
+      // Membership churn: a name promoted out of the 600 can linger in a stale
+      // list. Keeping both would rank it twice, against two benchmarks.
+      const { members, excluded } = resolveSegmentConflicts([
+        member('XYZ', 'Xyz Inc.', '600'),
+        member('XYZ', 'Xyz Inc.', '500'),
+      ])
+      expect(members).toHaveLength(1)
+      expect(members[0]?.segment).toBe('500')
+      expect(excluded[0]?.reason).toContain('600')
+    })
+
+    it('is order-independent', () => {
+      const a = resolveSegmentConflicts([member('X', 'X', '500'), member('X', 'X', '400')])
+      const b = resolveSegmentConflicts([member('X', 'X', '400'), member('X', 'X', '500')])
+      expect(a.members[0]?.segment).toBe(b.members[0]?.segment)
+    })
+
+    it('leaves share classes alone — that decision needs prices', () => {
+      const { members } = resolveSegmentConflicts([
+        member('GOOG', 'Alphabet Inc. Class C', '500'),
+        member('GOOGL', 'Alphabet Inc. Class A', '500'),
+      ])
+      expect(members).toHaveLength(2)
+    })
   })
 
-  it('keeps the larger listing of a duplicate share class', () => {
-    const caps = new Map([
-      ['GOOG', 1e11],
-      ['GOOGL', 2e11],
-    ])
-    const { eligible, excluded } = applyEligibility(
-      [member('GOOG', 'Alphabet Inc. Class C', '500'), member('GOOGL', 'Alphabet Inc. Class A', '500')],
-      (t) => caps.get(t) ?? null,
-    )
-    expect(eligible.map((m) => m.ticker)).toEqual(['GOOGL'])
-    expect(excluded[0]?.ticker).toBe('GOOG')
-    expect(excluded[0]?.reason).toContain('duplicate share class')
-  })
+  describe('resolveShareClasses', () => {
+    const classes = [
+      member('GOOG', 'Alphabet Inc. Class C', '500'),
+      member('GOOGL', 'Alphabet Inc. Class A', '500'),
+    ]
 
-  it('leaves genuinely different companies alone', () => {
-    const { eligible } = applyEligibility(
-      [member('AAA', 'Alpha Industries', '500'), member('BBB', 'Beta Industries', '500')],
-      () => 1e9,
-    )
-    expect(eligible).toHaveLength(2)
-  })
+    it('keeps the class that is still trading over the larger one', () => {
+      // The bug this ordering exists for: choosing on market cap alone kept a
+      // listing whose feed had stopped three months earlier and dropped the
+      // live one, leaving a row that could never show a return.
+      const { eligible, excluded } = resolveShareClasses(
+        classes,
+        evidence({
+          GOOG: { staleness: 0, marketCap: 1e11 },
+          GOOGL: { staleness: 58, marketCap: 2e11 },
+        }),
+      )
+      expect(eligible.map((m) => m.ticker)).toEqual(['GOOG'])
+      expect(excluded.some((e) => e.ticker === 'GOOGL')).toBe(true)
+    })
 
-  it('is deterministic when neither duplicate has a market cap', () => {
-    const a = applyEligibility(
-      [member('ZZZ', 'Same Co Class B', '500'), member('AAA', 'Same Co Class A', '500')],
-      () => null,
-    )
-    expect(a.eligible.map((m) => m.ticker)).toEqual(['AAA'])
-  })
+    it('prefers the larger listing when both are equally live', () => {
+      const { eligible } = resolveShareClasses(
+        classes,
+        evidence({ GOOG: { marketCap: 1e11 }, GOOGL: { marketCap: 2e11 } }),
+      )
+      expect(eligible.map((m) => m.ticker)).toEqual(['GOOGL'])
+    })
 
-  it('collapses share-class suffixes onto one company', () => {
-    expect(companyKey('Alphabet Inc. Class A')).toBe(companyKey('Alphabet Inc. Class C'))
-    expect(companyKey('Fox Corporation')).not.toBe(companyKey('Fortive Corporation'))
+    it('prefers the longer history before falling back to size', () => {
+      const { eligible } = resolveShareClasses(
+        classes,
+        evidence({
+          GOOG: { observations: 800, marketCap: 1 },
+          GOOGL: { observations: 200, marketCap: 1e12 },
+        }),
+      )
+      expect(eligible.map((m) => m.ticker)).toEqual(['GOOG'])
+    })
+
+    it('is deterministic when nothing separates the two', () => {
+      const { eligible } = resolveShareClasses(classes, evidence({}))
+      expect(eligible.map((m) => m.ticker)).toEqual(['GOOG'])
+    })
+
+    it('drops a listing that has stopped trading, and says why', () => {
+      const { eligible, excluded } = resolveShareClasses(
+        [member('DEAD', 'Defunct Industries', '600')],
+        evidence({ DEAD: { staleness: MAX_STALENESS + 1 } }),
+      )
+      expect(eligible).toHaveLength(0)
+      expect(excluded[0]?.reason).toContain('delisted')
+    })
+
+    it('keeps a listing that is merely a few days behind', () => {
+      const { eligible } = resolveShareClasses(
+        [member('SLOW', 'Slow Industries', '600')],
+        evidence({ SLOW: { staleness: MAX_STALENESS } }),
+      )
+      expect(eligible).toHaveLength(1)
+    })
+
+    it('drops a listing with no usable history at all', () => {
+      const { eligible, excluded } = resolveShareClasses(
+        [member('NEW', 'New Industries', '600')],
+        evidence({ NEW: { observations: 0, staleness: Number.POSITIVE_INFINITY } }),
+      )
+      expect(eligible).toHaveLength(0)
+      expect(excluded[0]?.reason).toBe('no usable price history')
+    })
+
+    it('leaves genuinely different companies alone', () => {
+      const { eligible } = resolveShareClasses(
+        [member('AAA', 'Alpha Industries', '500'), member('BBB', 'Beta Industries', '500')],
+        evidence({}),
+      )
+      expect(eligible).toHaveLength(2)
+    })
+
+    it('collapses share-class suffixes and parenthesised classes onto one company', () => {
+      expect(companyKey('Alphabet Inc. Class A')).toBe(companyKey('Alphabet Inc. Class C'))
+      expect(companyKey('Clearway Energy, Inc. (Class A)')).toBe(companyKey('Clearway Energy Inc.'))
+      expect(companyKey('Fox Corporation')).not.toBe(companyKey('Fortive Corporation'))
+    })
   })
 })
 

@@ -200,33 +200,46 @@ function decodeEntities(s: string): string {
 }
 
 /**
- * Eligibility.
+ * Eligibility, in two passes.
  *
- * Index membership already answers most of the question, so this only removes
- * what membership cannot:
+ * Index membership answers most of the question. What is left is deciding
+ * between listings that describe the same position, and that decision needs
+ * evidence the two passes have at different times.
  *
- *  - A ticker appearing in more than one segment. It has one true home, and
- *    the smaller index is the wrong one — a name promoted from the 600 to the
- *    500 can linger in a stale list. Larger segment wins.
- *  - Duplicate share classes of the same company. Two lines of the same
- *    business are one position, and both would rank identically and crowd the
- *    list. The larger listing is kept.
+ * **Before prices are fetched**, a ticker appearing in two segments is
+ * resolved: it has one true home, and the larger index is it — a name promoted
+ * out of the 600 can linger in a stale list, and keeping both would rank it
+ * twice against two different benchmarks.
+ *
+ * **After prices are fetched**, duplicate share classes are resolved. This has
+ * to wait, because the only thing that reliably separates two classes of the
+ * same company is which one is actually trading. Choosing on market cap alone
+ * once kept `CWEN-A`, whose feed had stopped three months earlier, and dropped
+ * the live `CWEN` — a row that could never show a return.
  */
-export function applyEligibility(
-  members: readonly Member[],
-  marketCapOf: (ticker: string) => number | null,
-): { eligible: Member[]; excluded: { ticker: string; reason: string }[] } {
-  const excluded: { ticker: string; reason: string }[] = []
-  const rank: Record<Segment, number> = { '500': 3, '400': 2, '600': 1 }
 
+const SEGMENT_RANK: Record<Segment, number> = { '500': 3, '400': 2, '600': 1 }
+
+export interface Exclusion {
+  readonly ticker: string
+  readonly reason: string
+}
+
+/** One ticker appearing in more than one segment keeps the larger index. */
+export function resolveSegmentConflicts(members: readonly Member[]): {
+  members: Member[]
+  excluded: Exclusion[]
+} {
+  const excluded: Exclusion[] = []
   const bySymbol = new Map<string, Member>()
+
   for (const m of members) {
     const existing = bySymbol.get(m.ticker)
     if (!existing) {
       bySymbol.set(m.ticker, m)
       continue
     }
-    const keep = rank[m.segment] >= rank[existing.segment] ? m : existing
+    const keep = SEGMENT_RANK[m.segment] >= SEGMENT_RANK[existing.segment] ? m : existing
     const drop = keep === m ? existing : m
     excluded.push({
       ticker: drop.ticker,
@@ -235,17 +248,71 @@ export function applyEligibility(
     bySymbol.set(m.ticker, keep)
   }
 
+  return {
+    members: [...bySymbol.values()].sort((a, b) => (a.ticker < b.ticker ? -1 : 1)),
+    excluded,
+  }
+}
+
+/**
+ * What is known about a listing once its prices have been fetched.
+ *
+ * `staleness` is how many trading days separate the security's last usable
+ * close from the dataset's last trading day. Zero means it traded on the most
+ * recent day; a large number means the feed has stopped.
+ */
+export interface PriceEvidence {
+  readonly staleness: number
+  readonly observations: number
+  readonly marketCap: number | null
+}
+
+/**
+ * A listing whose last close is further back than this cannot produce any
+ * return at all — every window is anchored at the dataset's last trading day
+ * and endpoint tolerance reaches back only a few days. A month of silence is a
+ * delisting the index list has not caught up with, and publishing it means a
+ * permanently blank row.
+ */
+export const MAX_STALENESS = 21
+
+/**
+ * Picks one listing per company and drops what has stopped trading.
+ *
+ * The order of preference between two share classes: the one still trading,
+ * then the one with more history, then the larger listing, then — so the
+ * choice is never arbitrary — the alphabetically first ticker.
+ */
+export function resolveShareClasses(
+  members: readonly Member[],
+  evidenceOf: (ticker: string) => PriceEvidence,
+): { eligible: Member[]; excluded: Exclusion[] } {
+  const excluded: Exclusion[] = []
+
+  const live: Member[] = []
+  for (const m of members) {
+    const evidence = evidenceOf(m.ticker)
+    if (evidence.observations === 0) {
+      excluded.push({ ticker: m.ticker, reason: 'no usable price history' })
+    } else if (evidence.staleness > MAX_STALENESS) {
+      excluded.push({
+        ticker: m.ticker,
+        reason: `no close in the last ${evidence.staleness} trading days; treated as delisted`,
+      })
+    } else {
+      live.push(m)
+    }
+  }
+
   const byCompany = new Map<string, Member>()
-  for (const m of bySymbol.values()) {
+  for (const m of live) {
     const key = companyKey(m.name)
     const existing = byCompany.get(key)
     if (!existing) {
       byCompany.set(key, m)
       continue
     }
-    const a = marketCapOf(m.ticker) ?? 0
-    const b = marketCapOf(existing.ticker) ?? 0
-    const keep = a > b ? m : a < b ? existing : m.ticker < existing.ticker ? m : existing
+    const keep = preferred(m, existing, evidenceOf)
     const drop = keep === m ? existing : m
     excluded.push({
       ticker: drop.ticker,
@@ -260,6 +327,21 @@ export function applyEligibility(
   }
 }
 
+function preferred(
+  a: Member,
+  b: Member,
+  evidenceOf: (ticker: string) => PriceEvidence,
+): Member {
+  const ea = evidenceOf(a.ticker)
+  const eb = evidenceOf(b.ticker)
+  if (ea.staleness !== eb.staleness) return ea.staleness < eb.staleness ? a : b
+  if (ea.observations !== eb.observations) return ea.observations > eb.observations ? a : b
+  const ca = ea.marketCap ?? 0
+  const cb = eb.marketCap ?? 0
+  if (ca !== cb) return ca > cb ? a : b
+  return a.ticker < b.ticker ? a : b
+}
+
 /**
  * A company identity that survives share-class suffixes and the punctuation
  * the index lists are inconsistent about.
@@ -267,7 +349,7 @@ export function applyEligibility(
 export function companyKey(name: string): string {
   return name
     .toLowerCase()
-    .replace(/[.,']/g, '')
+    .replace(/[.,'()]/g, '')
     .replace(/\b(class|series)\s+[a-c]\b/g, '')
     .replace(/\b(inc|corp|corporation|company|co|ltd|plc|holdings|holding|group|the|sa|nv)\b/g, '')
     .replace(/\s+/g, ' ')
