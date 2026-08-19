@@ -9,6 +9,7 @@ import type { Metric } from './types.ts'
 export type { Metric, MetricContext } from './types.ts'
 export {
   computeMetricValues,
+  filterBySector,
   metricHiddenWhenNarrow,
   rankValues,
   type Ranked,

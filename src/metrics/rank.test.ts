@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { PriceData, Stock } from '../data/types.ts'
 import { parseIsoDateToUtc } from '../calculations/index.ts'
 import type { Metric } from './types.ts'
-import { computeMetricValues, rankValues } from './rank.ts'
+import { computeMetricValues, filterBySector, rankValues } from './rank.ts'
 import type { MetricValues } from './rank.ts'
 
 const STOCKS: readonly Stock[] = [
@@ -125,5 +125,42 @@ describe('rankValues', () => {
       rank: null,
       values: { last: null },
     })
+  })
+})
+
+describe('filterBySector', () => {
+  const values = computeMetricValues(STOCKS, priceData, [lastClose])
+
+  it('keeps only the stocks in the sector', () => {
+    const result = filterBySector(values, 'Energy')
+
+    expect(result.map((r: MetricValues) => r.stock.ticker)).toEqual([
+      'CCC',
+      'NEW',
+    ])
+  })
+
+  it('returns everything when no sector is given', () => {
+    expect(filterBySector(values, null)).toBe(values)
+  })
+
+  it('returns nothing for a sector no stock is in', () => {
+    expect(filterBySector(values, 'Tech ')).toEqual([])
+  })
+
+  it('ranks within the sector, from one', () => {
+    const result = rankValues(filterBySector(values, 'Tech'), lastClose)
+
+    expect(result.map((r: MetricValues) => r.stock.ticker)).toEqual([
+      'AAA',
+      'BBB',
+    ])
+    expect(result.map((r: { rank: number | null }) => r.rank)).toEqual([1, 2])
+  })
+
+  it('leaves the computed values untouched', () => {
+    const [ccc] = filterBySector(values, 'Energy')
+
+    expect(ccc.values).toEqual({ last: 50 })
   })
 })

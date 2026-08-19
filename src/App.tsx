@@ -1,29 +1,37 @@
 import { useEffect, useMemo, useState } from 'react'
-import { UNIVERSE, loadPriceData, type PriceData } from './data/index.ts'
+import {
+  UNIVERSE,
+  loadPriceData,
+  resolveSector,
+  sectorsIn,
+  type PriceData,
+} from './data/index.ts'
 import {
   METRICS,
   computeMetricValues,
+  filterBySector,
   metricById,
   metricHiddenWhenNarrow,
   rankValues,
 } from './metrics/index.ts'
+import { SectorFilter } from './ui/SectorFilter.tsx'
 import { StockRow } from './ui/StockRow.tsx'
+import { parseViewHash, viewHash } from './ui/viewState.ts'
 
 /** Where the generated dataset is served from, relative to the app's base. */
 const PRICES_URL = `${import.meta.env.BASE_URL}data/prices.json`
 
-/**
- * The metric id lives in the URL hash so a ranking can be linked and
- * reloaded as seen, without pulling in a router for one value.
- */
-function metricIdFromHash(): string {
-  return new URLSearchParams(window.location.hash.slice(1)).get('metric') ?? ''
-}
+/** The sectors the loaded universe actually contains. Fixed for a build. */
+const SECTORS = sectorsIn(UNIVERSE)
 
 export default function App() {
   const [priceData, setPriceData] = useState<PriceData | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [metricId, setMetricId] = useState(metricIdFromHash)
+  /**
+   * Metric and sector live in the URL hash so a ranking can be linked and
+   * reloaded as seen, without pulling in a router for two values.
+   */
+  const [view, setView] = useState(() => parseViewHash(window.location.hash))
 
   useEffect(() => {
     let cancelled = false
@@ -42,29 +50,38 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const sync = () => setMetricId(metricIdFromHash())
+    const sync = () => setView(parseViewHash(window.location.hash))
     window.addEventListener('hashchange', sync)
     return () => window.removeEventListener('hashchange', sync)
   }, [])
 
-  const activeMetric = metricById(metricId)
+  const activeMetric = metricById(view.metricId)
+  const activeSector = resolveSector(SECTORS, view.sector)
 
-  // Values depend only on the data; only the ordering depends on the toggle.
+  // Values depend only on the data; the toggle and the filter only decide
+  // which of them are shown and in what order.
   const values = useMemo(
     () => (priceData ? computeMetricValues(UNIVERSE, priceData) : []),
     [priceData],
   )
 
   const ranked = useMemo(
-    () => rankValues(values, activeMetric),
-    [values, activeMetric],
+    () => rankValues(filterBySector(values, activeSector), activeMetric),
+    [values, activeSector, activeMetric],
   )
 
   const hiddenWhenNarrowId = metricHiddenWhenNarrow(METRICS, activeMetric.id)
 
-  const selectMetric = (id: string) => {
-    window.location.hash = `metric=${id}`
-    setMetricId(id)
+  // The active metric is written out even when it was only a default, so a
+  // link always says what it is showing.
+  const show = (next: Partial<{ metricId: string; sector: string | null }>) => {
+    const updated = {
+      metricId: activeMetric.id,
+      sector: activeSector,
+      ...next,
+    }
+    window.location.hash = viewHash(updated)
+    setView(updated)
   }
 
   return (
@@ -72,10 +89,17 @@ export default function App() {
     <main style={{ '--metric-count': METRICS.length } as React.CSSProperties}>
       <header className="masthead">
         <h1>Duo</h1>
+        {/* The sector is not repeated here — the filter below states it. */}
         <p className="subtitle">
           S&amp;P MidCap 400 · ranked by {activeMetric.label.toLowerCase()}
         </p>
       </header>
+
+      <SectorFilter
+        sectors={SECTORS}
+        active={activeSector}
+        onChange={(sector) => show({ sector })}
+      />
 
       <div className="columns">
         <span className="rank" aria-hidden="true" />
@@ -95,7 +119,7 @@ export default function App() {
               .join(' ')}
             aria-pressed={metric.id === activeMetric.id}
             title={metric.description}
-            onClick={() => selectMetric(metric.id)}
+            onClick={() => show({ metricId: metric.id })}
           >
             {metric.shortLabel}
           </button>
@@ -124,8 +148,10 @@ export default function App() {
             ))}
           </ol>
           <footer className="colophon">
-            {ranked.length} constituents · {activeMetric.description} Prices
-            as of {priceData.generatedAt}.
+            {activeSector === null
+              ? `${ranked.length} constituents`
+              : `${ranked.length} of ${values.length} constituents`}{' '}
+            · {activeMetric.description} Prices as of {priceData.generatedAt}.
           </footer>
         </>
       )}
