@@ -1,0 +1,45 @@
+# The Alpha Lab: walk-forward signal evaluation over ~10 years of
+# dividend-adjusted history. Runs on push when the lab changes; the deep price
+# cache is separate from production's and restored by prefix like it.
+# Publishes nothing — the output is a report artifact and a step summary.
+name: Alpha Lab
+on:
+  push:
+    branches: [claude/reset-repository-blank-h3ll7p]
+    paths:
+      - 'lab/**'
+      - '.github/workflows/alpha-lab.yml'
+permissions:
+  contents: read
+concurrency:
+  group: alpha-lab
+  cancel-in-progress: false
+jobs:
+  lab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Restore the deep price cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/lab-prices
+          key: lab-prices-${{ github.run_id }}
+          restore-keys: |
+            lab-prices-
+      - name: Run the Lab
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: npx tsx lab/run.ts
+      - name: Upload the report
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-lab-report
+          path: .lab/report.json
+          retention-days: 90
