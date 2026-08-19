@@ -87,11 +87,16 @@ dataset block.
 - Residual momentum: Blitz, Huij & Martens (2011), *Journal of Empirical
   Finance* 18(3) — beta-stripped momentum with lower crash risk. Internally
   the most *consistent* signal tested (IC > 0 on 64% of dates, lowest
-  turnover). v2.1 widens this family with three selectable variants —
-  Residual 12−1 and Residual 6−1 (the skip-month convention applied to the
-  residual, exactly as it is to price momentum) and Residual/vol (residual
-  return over the annualised volatility of its own daily residuals, the
-  BHM construction proper). β is fitted over three years in every case.
+  turnover). v2.2 replaces the named metric strip with a dimensional
+  selector: one window control (12M | 6M) and three independent toggles
+  (Skip 1M, Residual, ÷ Vol) compose all sixteen combinations through one
+  shared implementation — exposing ranking dimensions rather than every
+  permutation. Residual subtracts β × the segment benchmark (β from three
+  years of daily returns, intercept fitted but never subtracted); ÷ Vol
+  divides by the same window's own volatility, of the residuals themselves
+  when Residual is on (the BHM construction proper). Standalone statistics
+  (3M, R/V, VOL, β, SUE, Δ rank, cap) moved behind the Filters disclosure —
+  they are metrics, not dimensions.
 
 ## Considered and not adopted
 

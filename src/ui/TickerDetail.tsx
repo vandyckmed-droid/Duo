@@ -302,7 +302,7 @@ export function TickerDetail({
         )}
 
         <Section title="Every metric">
-          {METRICS.filter((m) => m.kind === 'value').map((m) => (
+          {METRICS.filter((m) => m.kind === 'value' && m.family !== 'rank').map((m) => (
             <Stat
               key={m.id}
               label={m.label}

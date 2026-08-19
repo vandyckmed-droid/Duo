@@ -79,10 +79,12 @@ describe('metric registry', () => {
       '12-1',
       '6-1',
       '12M',
+      '6M',
+      'res-12-1',
+      'res-12-1-v',
       '3M',
       'return-vol',
       'volatility',
-      'residual',
       'beta',
       'rank-change',
       'market-cap',
@@ -95,7 +97,9 @@ describe('metric registry', () => {
     for (const m of METRICS) {
       expect(m.definition.length).toBeGreaterThan(30)
       expect(m.short.length).toBeGreaterThan(0)
-      expect(m.short.length).toBeLessThanOrEqual(6)
+      // The compact strip that demanded six characters is gone; the widest
+      // remaining short is the dimensional "R12−1/V".
+      expect(m.short.length).toBeLessThanOrEqual(8)
     }
   })
 
