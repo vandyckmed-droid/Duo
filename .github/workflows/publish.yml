@@ -37,8 +37,11 @@ permissions:
   pages: write
   id-token: write
 
+# One group across every workflow that spends the provider key's rate
+# budget (this one and the Alpha Lab), so they serialize instead of starving
+# each other into 429s. Runs queue rather than cancel.
 concurrency:
-  group: publish-${{ github.ref }}
+  group: fmp-key
   cancel-in-progress: false
 
 jobs:

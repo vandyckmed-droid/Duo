@@ -11,8 +11,12 @@ on:
       - '.github/workflows/alpha-lab.yml'
 permissions:
   contents: read
+# Shared with the publish workflow's group on this branch: both spend the
+# same provider key's rate budget, and running them concurrently starved the
+# publish run's quote batches into a hard 429 failure. One group = one key
+# user at a time.
 concurrency:
-  group: alpha-lab
+  group: fmp-key
   cancel-in-progress: false
 jobs:
   lab:
