@@ -7,6 +7,7 @@ import {
   type Member,
 } from './membership.ts'
 import { fetchFrom, mergePoints } from './cache.ts'
+import { Fmp, readApiKey } from './fmp.ts'
 import { alignToCalendar, computeSecurity, computeUniverse } from './compute.ts'
 import { hasErrors, validate } from './validate.ts'
 import type { Manifest, SecurityRecord } from '../src/domain/dataset.ts'
@@ -444,5 +445,34 @@ describe('validate', () => {
     const issues = validate(stale, manifest, options)
     expect(hasErrors(issues)).toBe(false)
     expect(issues.some((i) => i.level === 'warning')).toBe(true)
+  })
+})
+
+describe('readApiKey', () => {
+  it('prefers the provider-specific name', () => {
+    expect(readApiKey({ FMP_API_KEY: 'a', API_KEY: 'b' })).toBe('a')
+  })
+
+  it('falls back to the name the credential is already configured under', () => {
+    // Renaming a working secret to satisfy a preference is a worse trade than
+    // reading the second name.
+    expect(readApiKey({ API_KEY: 'b' })).toBe('b')
+  })
+
+  it('treats blank and whitespace-only values as absent', () => {
+    // An unset repository secret interpolates to an empty string rather than
+    // vanishing, so the variable exists and is useless.
+    expect(readApiKey({ FMP_API_KEY: '', API_KEY: 'b' })).toBe('b')
+    expect(readApiKey({ FMP_API_KEY: '   ', API_KEY: 'b' })).toBe('b')
+    expect(readApiKey({})).toBe('')
+    expect(readApiKey({ FMP_API_KEY: undefined })).toBe('')
+  })
+
+  it('trims a stray newline from the value', () => {
+    expect(readApiKey({ FMP_API_KEY: 'a\n' })).toBe('a')
+  })
+
+  it('refuses to construct a client without a key, naming both variables', () => {
+    expect(() => new Fmp(readApiKey({}))).toThrow(/FMP_API_KEY or API_KEY/)
   })
 })

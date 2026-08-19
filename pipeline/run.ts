@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { Fmp, type PricePoint } from './fmp.ts'
+import { Fmp, readApiKey, type PricePoint } from './fmp.ts'
 import { PriceCache, refresh } from './cache.ts'
 import { applyEligibility, resolveMembership, type Member } from './membership.ts'
 import { alignToCalendar, computeUniverse, type ComputeInput } from './compute.ts'
@@ -44,7 +44,7 @@ function log(message: string): void {
 
 async function main(): Promise<void> {
   const started = Date.now()
-  const key = process.env['FMP_API_KEY'] ?? ''
+  const key = readApiKey(process.env)
   const limit = Number(process.env['DUO_MAX_PER_SEGMENT'] ?? '0')
   const fmp = new Fmp(key, { concurrency: Number(process.env['DUO_CONCURRENCY'] ?? '8') })
 

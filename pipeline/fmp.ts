@@ -13,6 +13,30 @@
 
 const BASE = 'https://financialmodelingprep.com/stable'
 
+/**
+ * The environment variables the key may arrive under, in order of preference.
+ *
+ * `FMP_API_KEY` names the provider and is what the documentation says to set.
+ * `API_KEY` is the name the credential is already configured under in this
+ * repository's environment, and renaming a working secret is a worse trade
+ * than reading two names.
+ */
+export const KEY_VARIABLES = ['FMP_API_KEY', 'API_KEY'] as const
+
+/**
+ * Reads the key from the environment.
+ *
+ * Returns the value only — never which variable it came from, and never any
+ * part of the key itself — so nothing a caller logs can narrow it down.
+ */
+export function readApiKey(env: Record<string, string | undefined>): string {
+  for (const name of KEY_VARIABLES) {
+    const value = env[name]?.trim()
+    if (value) return value
+  }
+  return ''
+}
+
 export interface ClientOptions {
   /** Requests in flight at once. */
   readonly concurrency?: number
@@ -86,7 +110,7 @@ export class Fmp {
   constructor(key: string, options: ClientOptions = {}) {
     if (!key) {
       throw new FmpError(
-        'FMP_API_KEY is not set. The pipeline reads it from the environment; it is never stored in the repository.',
+        `No API key in the environment. Set one of ${KEY_VARIABLES.join(' or ')}; the pipeline reads it from the environment and it is never stored in the repository.`,
       )
     }
     this.key = key

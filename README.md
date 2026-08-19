@@ -47,13 +47,18 @@ provider ingestion → canonical metadata → adjusted-price cache
 
 ## The API key
 
-`FMP_API_KEY` is a repository secret. It is read from the environment by
-`pipeline/fmp.ts`, inside GitHub Actions, and nowhere else.
+The key is a repository secret, read from the environment by `pipeline/fmp.ts`,
+inside GitHub Actions, and nowhere else. Either `FMP_API_KEY` or `API_KEY` is
+accepted — the first names the provider, the second is the name the credential
+is already configured under, and renaming a working secret is a worse trade
+than reading two names.
 
 - The browser never calls Financial Modeling Prep and never sees the key.
 - The client bundle has no provider client in it at all. CI greps the built
-  bundle for the key name, the provider host and an `apikey` parameter, and
-  fails if any of them appear.
+  bundle for the key name, the provider host and an `apikey` parameter; the
+  refresh workflow additionally greps the whole built site for the **key's own
+  value**, which it can do because the secret is in that job's environment.
+  Either finding anything fails the run.
 - The key is never written to a file, never interpolated into a log line, and
   never reaches the published dataset.
 

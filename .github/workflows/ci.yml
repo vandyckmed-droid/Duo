@@ -43,7 +43,7 @@ jobs:
 
       - name: Assert no credential reached the bundle
         run: |
-          if grep -rIl -E "FMP_API_KEY|financialmodelingprep\.com|apikey=" dist/assets dist/index.html; then
+          if grep -rqI -E "API_KEY|financialmodelingprep\.com|apikey=" dist/assets dist/index.html; then
             echo "::error::A provider reference or key leaked into the client bundle."
             exit 1
           fi

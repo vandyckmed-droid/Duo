@@ -76,18 +76,38 @@ jobs:
 
       - name: Refresh the dataset
         env:
+          # The credential is configured under one of these two names. Passing
+          # both lets the pipeline take whichever exists rather than making a
+          # working secret depend on being renamed.
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
         run: npm run refresh
 
       - name: Build the site
         run: npm run build
 
-      - name: Assert no credential reached the bundle
+      # The strongest check available here: the secret is in this job's
+      # environment, so the built site can be searched for the key itself
+      # rather than for things that merely resemble one. grep stays quiet, and
+      # the runner masks the value in logs regardless.
+      - name: Assert no credential reached the built site
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
         run: |
-          if grep -rIl -E 'FMP_API_KEY|financialmodelingprep\.com/stable\?|apikey=' dist/assets; then
-            echo "::error::A credential or provider request leaked into the client bundle."
+          for name in FMP_API_KEY API_KEY; do
+            value="${!name}"
+            [ -n "$value" ] || continue
+            if grep -rqI -- "$value" dist; then
+              echo "::error::The API key value appears in the built site."
+              exit 1
+            fi
+          done
+          if grep -rqI -E 'API_KEY|apikey=' dist/assets; then
+            echo "::error::A key reference leaked into the client bundle."
             exit 1
           fi
+          echo "No key value, key name, or apikey parameter in the built site."
 
       - name: Summarise the run
         run: |
