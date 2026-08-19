@@ -1,0 +1,23 @@
+# V2 data-availability probe. Prints, per candidate endpoint, only the HTTP
+# status, row count and field names — never values and never the key — so the
+# log is safe to read publicly. Gates which V2 signal families are feasible
+# on this subscription.
+name: Probe V2 data
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Probe endpoints
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+        run: npx tsx pipeline/probe.ts
