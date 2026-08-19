@@ -1,27 +1,26 @@
-import type { Fmp } from './fmp.ts'
 import type { Provenance } from '../src/domain/dataset.ts'
 import { canonicalSector } from '../src/domain/sectors.ts'
 import { SEGMENTS, type Segment } from '../src/domain/segments.ts'
+import type { Fmp } from './fmp.ts'
 
 /**
  * Segment membership.
  *
  * Which names belong to the 500, the 400 and the 600 is the one fact the rest
- * of the pipeline cannot derive for itself, and it decides which benchmark
- * every beta and residual return is measured against. So it is resolved
- * explicitly, in a fixed order of preference, and the route that actually
- * answered is recorded in the published manifest.
+ * of the pipeline cannot derive for itself. So it is resolved explicitly, in
+ * a fixed order of preference, and the route that actually answered is
+ * recorded in the published manifest.
  *
  * The order, per the product's own preference for provider-native data:
  *
  *   1. An FMP constituent endpoint for the index.
- *   2. FMP's ETF holdings endpoint for the segment's benchmark.
+ *   2. FMP's ETF holdings endpoint for the segment's tracking ETF.
  *   3. The Wikipedia constituents table for the index.
  *
  * Verified against the live API on 19 August 2026:
  *
- *   - `sp500-constituent` — available; used for the 500, with GICS sector and
- *     sub-industry included.
+ *   - `sp500-constituent` — available; used for the 500, with GICS sector
+ *     included.
  *   - `sp400-constituent`, `sp600-constituent`, `index-constituent` — 404. FMP
  *     publishes no constituent endpoint for the MidCap 400 or SmallCap 600.
  *   - `etf/holdings` — HTTP 402 on this subscription for IJH and IJR alike, so
@@ -38,7 +37,6 @@ export interface Member {
   readonly name: string
   readonly segment: Segment
   readonly sector: string
-  readonly industry: string
 }
 
 export interface MembershipResult {
@@ -101,22 +99,21 @@ async function resolveSegment(
           name: r.name || r.symbol,
           segment,
           sector: canonicalSector(r.sector),
-          industry: r.industry || 'Unknown',
         })),
         source: 'fmp:sp500-constituent',
-        detail: 'Financial Modeling Prep index constituents, with GICS sector and sub-industry.',
+        detail: 'Financial Modeling Prep index constituents, with GICS sector.',
       }
     }
   }
 
-  // Route 2 — derive membership from the benchmark ETF's holdings. Sector and
-  // industry are not in that payload, so they are filled from the index list.
-  const benchmark = SEGMENTS.find((s) => s.id === segment)?.benchmark as string
-  const holdings = await fmp.etfHoldings(benchmark)
+  // Route 2 — derive membership from the tracking ETF's holdings. Sector is
+  // not in that payload, so it is filled from the index list.
+  const etf = SEGMENTS.find((s) => s.id === segment)?.etf as string
+  const holdings = await fmp.etfHoldings(etf)
   if (holdings && holdings.length >= (MINIMUM[segment] as number)) {
     const classified = await wikipediaConstituents(segment)
     const bySymbol = new Map(classified.map((c) => [c.ticker, c]))
-    log(`  ${segment}: using ${benchmark} holdings (${holdings.length})`)
+    log(`  ${segment}: using ${etf} holdings (${holdings.length})`)
     return {
       members: holdings.map((raw) => {
         const ticker = normaliseTicker(raw)
@@ -126,11 +123,10 @@ async function resolveSegment(
           name: known?.name ?? ticker,
           segment,
           sector: known?.sector ?? 'Unknown',
-          industry: known?.industry ?? 'Unknown',
         }
       }),
-      source: `fmp:etf-holdings:${benchmark}`,
-      detail: `Derived from ${benchmark} holdings; GICS classification from the index constituents list.`,
+      source: `fmp:etf-holdings:${etf}`,
+      detail: `Derived from ${etf} holdings; GICS classification from the index constituents list.`,
     }
   }
 
@@ -174,7 +170,7 @@ export function parseConstituentsTable(html: string, segment: Segment): Member[]
 
   const out: Member[] = []
   for (const cells of rows) {
-    const [symbol, name, sector, industry] = cells
+    const [symbol, name, sector] = cells
     if (!symbol || !name || !sector) continue
     if (!/^[A-Z][A-Z.-]{0,6}$/.test(symbol)) continue
     out.push({
@@ -182,7 +178,6 @@ export function parseConstituentsTable(html: string, segment: Segment): Member[]
       name,
       segment,
       sector: canonicalSector(sector),
-      industry: industry || 'Unknown',
     })
   }
   return out
@@ -209,7 +204,7 @@ function decodeEntities(s: string): string {
  * **Before prices are fetched**, a ticker appearing in two segments is
  * resolved: it has one true home, and the larger index is it — a name promoted
  * out of the 600 can linger in a stale list, and keeping both would rank it
- * twice against two different benchmarks.
+ * twice.
  *
  * **After prices are fetched**, duplicate share classes are resolved. This has
  * to wait, because the only thing that reliably separates two classes of the

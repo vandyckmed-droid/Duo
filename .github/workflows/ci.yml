@@ -37,13 +37,13 @@ jobs:
         run: npm run test
 
       # Builds without a dataset present, which is the point: the published
-      # JSON is produced by the refresh workflow, never committed.
+      # JSON is produced by the refresh workflow, never by CI.
       - name: Build
         run: npm run build
 
       - name: Assert no credential reached the bundle
         run: |
-          if grep -rqI -E "API_KEY|financialmodelingprep\.com|apikey=" dist/assets dist/index.html; then
+          if grep -rqI -E "API_KEY|financialmodelingprep\.com|apikey=" docs/assets docs/index.html; then
             echo "::error::A provider reference or key leaked into the client bundle."
             exit 1
           fi

@@ -1,42 +1,29 @@
 import { resolve } from 'node:path'
-import { Fmp, readApiKey, type PricePoint } from './fmp.ts'
+import { SIGNAL_WINDOWS } from '../src/calc/signals.ts'
+import { lastValidIndex, observationCount } from '../src/calc/series.ts'
+import { DATASET_VERSION, type Manifest } from '../src/domain/dataset.ts'
+import { CALENDAR_TICKER, SEGMENTS, type Segment } from '../src/domain/segments.ts'
 import { PriceCache, refresh } from './cache.ts'
+import { HISTORY_TRADING_DAYS, alignToCalendar, computeUniverse } from './compute.ts'
+import { Fmp, type PricePoint, readApiKey } from './fmp.ts'
 import {
+  type Exclusion,
+  type Member,
   resolveMembership,
   resolveSegmentConflicts,
   resolveShareClasses,
-  type Exclusion,
-  type Member,
 } from './membership.ts'
-import { alignToCalendar, computeUniverse, type ComputeInput } from './compute.ts'
-import { refreshEarningsStore } from './earnings.ts'
-import {
-  distanceFromHigh,
-  lastValidIndex,
-  observationCount,
-  valueOrNull,
-  windowReturn,
-} from '../src/engine/index.ts'
-import { hasErrors, validate } from './validate.ts'
 import { publish } from './publish.ts'
-import { DATASET_VERSION, type Manifest } from '../src/domain/dataset.ts'
-import { classifyRegime, type MarketRegime } from '../src/domain/regime.ts'
-import { BENCHMARK_TICKERS, SEGMENTS, type Segment } from '../src/domain/segments.ts'
-import {
-  BETA_LOOKBACK,
-  HISTORY_TRADING_DAYS,
-  RANK_CHANGE_OFFSET,
-  WINDOWS,
-} from '../src/domain/windows.ts'
+import { hasErrors, validate } from './validate.ts'
 
 /**
  * The refresh.
  *
- *   membership → price cache → calculation engine → validation → publish
+ *   membership → price cache → signals → validation → publish
  *
  * Run by GitHub Actions on a schedule and on demand. The API key comes from
- * the environment and stays in this process; what leaves is a directory of
- * static JSON with no credential anywhere in it.
+ * the environment and stays in this process; what leaves is two static JSON
+ * files with no credential anywhere in them.
  *
  *     FMP_API_KEY=… npm run refresh
  *
@@ -48,7 +35,6 @@ import {
 
 const ROOT = resolve(import.meta.dirname, '..')
 const CACHE_DIR = process.env['DUO_CACHE_DIR'] ?? resolve(ROOT, '.cache/prices')
-const EARNINGS_STORE = process.env['DUO_EARNINGS_STORE'] ?? resolve(ROOT, '.cache/earnings/calendar.json')
 const OUTPUT_DIR = process.env['DUO_OUTPUT_DIR'] ?? resolve(ROOT, 'public/data')
 
 /** Calendar days of history to request, sized from the longest window used. */
@@ -56,23 +42,6 @@ const HISTORY_CALENDAR_DAYS = Math.ceil((HISTORY_TRADING_DAYS / 252) * 365) + 45
 
 function log(message: string): void {
   console.log(message)
-}
-
-/**
- * The market momentum regime at the anchor, from the broad-market benchmark.
- * Absent rather than guessed when SPY's history cannot support the inputs.
- */
-function marketRegime(
-  spy: (number | null)[],
-  anchor: number,
-): { market: MarketRegime } | Record<string, never> {
-  const fromHigh = valueOrNull(distanceFromHigh(spy, 252, anchor))
-  const return6M = valueOrNull(windowReturn(spy, { formation: 126, skip: 0 }, anchor))
-  const return1M = valueOrNull(windowReturn(spy, { formation: 21, skip: 0 }, anchor))
-  if (fromHigh === null || return6M === null || return1M === null) return {}
-  return {
-    market: { state: classifyRegime(fromHigh, return6M, return1M), fromHigh, return6M, return1M },
-  }
 }
 
 async function main(): Promise<void> {
@@ -83,8 +52,8 @@ async function main(): Promise<void> {
 
   // The run date may be mid-session, so the request ends yesterday: the
   // dataset only ever holds settled closes. Losing one settled close on an
-  // after-hours run is harmless; publishing an intraday print labelled "close"
-  // is not.
+  // after-hours run is harmless; publishing an intraday print labelled
+  // "close" is not.
   const to = shiftDays(today(), -1)
   const coldStart = shiftDays(to, -HISTORY_CALENDAR_DAYS)
   const retainFrom = shiftDays(to, -HISTORY_CALENDAR_DAYS - 30)
@@ -92,7 +61,7 @@ async function main(): Promise<void> {
   log('Resolving segment membership…')
   const membership = await resolveMembership(fmp, log)
 
-  log('Fetching quotes for market cap and eligibility…')
+  log('Fetching quotes for share-class resolution…')
   const quotes = await fmp.quotes([...new Set(membership.members.map((m) => m.ticker))])
   const marketCapOf = (ticker: string) => quotes.get(ticker)?.marketCap ?? null
 
@@ -109,7 +78,7 @@ async function main(): Promise<void> {
 
   log(`Refreshing prices (${coldStart} → ${to})…`)
   const cache = new PriceCache(CACHE_DIR)
-  const tickers = [...candidates.map((m) => m.ticker), ...BENCHMARK_TICKERS]
+  const tickers = [...candidates.map((m) => m.ticker), CALENDAR_TICKER]
   const outcomes = await refresh(cache, fmp, tickers, {
     from: coldStart,
     to,
@@ -124,21 +93,13 @@ async function main(): Promise<void> {
   log(`  ${added} new observations; ${failed.length} tickers kept from cache after a failed request`)
   for (const f of failed.slice(0, 10)) log(`    ${f.ticker}: ${f.error}`)
 
-  log('Refreshing the earnings calendar…')
-  const earningsStore = await refreshEarningsStore(EARNINGS_STORE, fmp, to, log)
-  log(`  ${Object.keys(earningsStore.bySymbol).length} symbols with recent announcements`)
-
   log('Loading cached history…')
-  const benchmarkPoints = new Map<string, PricePoint[]>()
-  for (const ticker of BENCHMARK_TICKERS) {
-    const series = await cache.read(ticker)
-    const points = series?.points ?? []
-    // Without its benchmark an entire segment loses beta, residual return and
-    // any honest comparison; that is a failed run, not a degraded one.
-    if (points.length < BETA_LOOKBACK * 0.5) {
-      throw new Error(`benchmark ${ticker}: only ${points.length} closes cached`)
-    }
-    benchmarkPoints.set(ticker, points)
+  const anchorSeries = await cache.read(CALENDAR_TICKER)
+  const anchorPoints = anchorSeries?.points ?? []
+  // Without the calendar anchor nothing can be aligned; that is a failed run,
+  // not a degraded one.
+  if (anchorPoints.length < HISTORY_TRADING_DAYS * 0.9) {
+    throw new Error(`${CALENDAR_TICKER}: only ${anchorPoints.length} closes cached`)
   }
 
   const securityPoints = new Map<string, PricePoint[]>()
@@ -147,16 +108,9 @@ async function main(): Promise<void> {
     if (series && series.points.length > 0) securityPoints.set(member.ticker, series.points)
   }
 
-  const aligned = alignToCalendar(benchmarkPoints, securityPoints)
+  const aligned = alignToCalendar(anchorPoints, securityPoints)
   log(
     `  calendar: ${aligned.calendar.length} trading days, ${aligned.calendar[0]} → ${aligned.calendar.at(-1)}`,
-  )
-  if (aligned.orphanedObservations > 0) {
-    log(`  ${aligned.orphanedObservations} observations fell outside the benchmark calendar`)
-  }
-
-  const benchmarks = new Map(
-    BENCHMARK_TICKERS.map((t) => [t, aligned.closes.get(t) ?? []] as const),
   )
 
   // Second pass, now that there is evidence: pick the share class that is
@@ -176,25 +130,8 @@ async function main(): Promise<void> {
   log(`  ${universe.length} eligible, ${ineligible.length} dropped after seeing their prices`)
   for (const e of ineligible.slice(0, 8)) log(`    ${e.ticker}: ${e.reason}`)
 
-  log('Computing analytics…')
-  const inputs: ComputeInput[] = universe.map((member) => ({
-    member,
-    closes: aligned.closes.get(member.ticker) ?? [],
-    marketCap: marketCapOf(member.ticker),
-    // Historical market cap is not on this subscription. Scaling today's cap by
-    // the price move over the window is exact up to share-count changes, which
-    // is honest enough for a rank change and never invented out of nothing.
-    priorMarketCap: scaleMarketCap(
-      marketCapOf(member.ticker),
-      aligned.closes.get(member.ticker) ?? [],
-    ),
-    stale: outcomes.get(member.ticker)?.stale ?? false,
-    ...(earningsStore.bySymbol[member.ticker]
-      ? { earnings: earningsStore.bySymbol[member.ticker] }
-      : {}),
-  }))
-
-  const computed = computeUniverse(inputs, { calendar: aligned.calendar, benchmarks })
+  log('Computing signals…')
+  const computed = computeUniverse(universe, aligned)
   log(`  ${computed.securities.length} securities, ${computed.excluded.length} without usable history`)
 
   const counts: Partial<Record<Segment, number>> = {}
@@ -207,18 +144,11 @@ async function main(): Promise<void> {
     generatedAt: new Date().toISOString(),
     asOf: aligned.calendar.at(-1) as string,
     provider: 'financialmodelingprep.com/stable',
-    benchmarks: Object.fromEntries(SEGMENTS.map((s) => [s.id, s.benchmark])) as Record<
-      Segment,
-      string
-    >,
-    membership: membership.provenance,
     counts: { total: computed.securities.length, ...counts },
     calendarDays: aligned.calendar.length,
-    windows: Object.fromEntries(Object.entries(WINDOWS).map(([id, w]) => [id, { ...w }])),
-    betaLookback: BETA_LOOKBACK,
-    rankChangeOffset: RANK_CHANGE_OFFSET,
+    windows: SIGNAL_WINDOWS,
+    membership: membership.provenance,
     excluded: [...excluded, ...computed.excluded],
-    ...marketRegime(aligned.closes.get('SPY') ?? [], anchor),
   }
 
   log('Validating…')
@@ -227,22 +157,16 @@ async function main(): Promise<void> {
   })
   for (const issue of issues) log(`  [${issue.level}] ${issue.message}`)
   if (hasErrors(issues)) {
-    // Nothing is written. The dataset already on Pages is the last one that
-    // passed, which is exactly what should keep serving.
-    throw new Error(`validation failed with ${issues.filter((i) => i.level === 'error').length} error(s); nothing published`)
+    // Nothing is written. The dataset already being served is the last one
+    // that passed, which is exactly what should keep serving.
+    throw new Error(
+      `validation failed with ${issues.filter((i) => i.level === 'error').length} error(s); nothing published`,
+    )
   }
 
-  const result = await publish(OUTPUT_DIR, {
-    manifest,
-    securities: computed.securities,
-    calendar: aligned.calendar,
-    closes: aligned.closes,
-    benchmarks: [...BENCHMARK_TICKERS],
-  })
+  const result = await publish(OUTPUT_DIR, manifest, computed.securities)
 
-  log(
-    `\nPublished ${result.files} files (${(result.bytes / 1e6).toFixed(1)} MB) to ${result.directory}`,
-  )
+  log(`\nPublished ${(result.bytes / 1e6).toFixed(2)} MB to ${result.directory}`)
   log(
     `  ${manifest.counts.total} securities — 500: ${counts['500']}, 400: ${counts['400']}, 600: ${counts['600']}`,
   )
@@ -250,32 +174,13 @@ async function main(): Promise<void> {
   log(`  ${fmp.requestCount} provider requests in ${((Date.now() - started) / 1000).toFixed(0)}s`)
 }
 
-/** Keeps the largest `limit` names per segment, for quick local runs. */
+/** Keeps the first `limit` names per segment, for quick local runs. */
 function capPerSegment(members: readonly Member[], limit: number): Member[] {
   const out: Member[] = []
   for (const segment of SEGMENTS) {
     out.push(...members.filter((m) => m.segment === segment.id).slice(0, limit))
   }
   return out
-}
-
-function scaleMarketCap(current: number | null, closes: readonly (number | null)[]): number | null {
-  if (current === null) return null
-  const anchor = closes.length - 1
-  const thenIndex = anchor - RANK_CHANGE_OFFSET
-  if (thenIndex < 0) return null
-  const now = lastFinite(closes, anchor)
-  const then = lastFinite(closes, thenIndex)
-  if (now === null || then === null || now <= 0) return null
-  return current * (then / now)
-}
-
-function lastFinite(closes: readonly (number | null)[], from: number): number | null {
-  for (let i = Math.min(from, closes.length - 1); i >= 0 && i > from - 6; i--) {
-    const c = closes[i]
-    if (typeof c === 'number' && Number.isFinite(c) && c > 0) return c
-  }
-  return null
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
