@@ -50,6 +50,28 @@ export interface SecurityRecord {
   readonly low52: number | null
   readonly high52: number | null
 
+  /**
+   * V2 path-quality facts (optional — absent in V1 datasets, so a V1 client
+   * reading a V2 file and a V2 client reading a V1 file both keep working).
+   *
+   * These are per-security facts like everything else in this record; the
+   * cross-sectional scores built from them (percentiles, agreement, Alpha
+   * Score) are computed in the interface, where "a rank always means position
+   * within the list you are looking at".
+   */
+  readonly path?: {
+    /** Share of the trailing 252 trading days that closed up. */
+    readonly positiveDayShare: number | null
+    /** Share of the trailing year's log return earned on its 5 best days. */
+    readonly top5Share: number | null
+    /** Last price / trailing-252-day high, in (0, 1]. */
+    readonly closeToHigh: number | null
+    /** Share of the last 63 days spent within 5% of the running 252d high. */
+    readonly timeNearHigh: number | null
+    /** Annualised standard deviation of negative daily returns, 252d. */
+    readonly downsideDeviation: number | null
+  }
+
   /** Usable observations held for this security, and their span. */
   readonly history: { days: number; from: string | null; to: string | null }
 

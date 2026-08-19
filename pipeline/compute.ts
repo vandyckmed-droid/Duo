@@ -1,12 +1,17 @@
 import {
   beta as fitBeta,
+  distanceFromHigh,
+  downsideDeviation,
   isUsable,
   lastValidIndex,
   maxDrawdown,
   observationCount,
+  positiveDayShare,
   realisedVolatility,
   residualReturn,
   returnPerVol,
+  timeNearHigh,
+  topDayConcentration,
   valueOrNull,
   windowReturn,
 } from '../src/engine/index.ts'
@@ -42,6 +47,12 @@ import type { Member } from './membership.ts'
  * is regressed against the ETF for its own index. That mapping is applied once,
  * here, from authoritative metadata, and asserted in the tests.
  */
+
+/** Path-quality lookback: the trailing year, matching the 12M window. */
+const PATH_LOOKBACK = 252
+
+/** "Near the high" means within 5% of the running 252-day high. */
+const NEAR_HIGH_BAND = 0.05
 
 export interface AlignedUniverse {
   readonly calendar: string[]
@@ -175,6 +186,15 @@ export function computeSecurity(
     lastDate: lastIndex >= 0 ? (context.calendar[lastIndex] as string) : null,
     low52: range.low,
     high52: range.high,
+    path: {
+      positiveDayShare: valueOrNull(positiveDayShare(closes, PATH_LOOKBACK, anchor)),
+      top5Share: valueOrNull(topDayConcentration(closes, PATH_LOOKBACK, 5, anchor)),
+      closeToHigh: valueOrNull(distanceFromHigh(closes, PATH_LOOKBACK, anchor)),
+      timeNearHigh: valueOrNull(
+        timeNearHigh(closes, PATH_LOOKBACK, RANK_CHANGE_OFFSET, NEAR_HIGH_BAND, anchor),
+      ),
+      downsideDeviation: valueOrNull(downsideDeviation(closes, PATH_LOOKBACK, anchor)),
+    },
     history: {
       days: observationCount(closes),
       from: first,
