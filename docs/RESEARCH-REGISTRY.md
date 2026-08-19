@@ -151,6 +151,7 @@ Schema per entry:
 - **Date tested**: 2026-08-19 (Lab run 32240224765; 116 monthly dates 2016-06→2026-02; 21d non-overlapping ICs).
 - **Result**: SUPPORTED directionally, and strongly — the one definition that separates. Normal (n=102): 12−1 +0.010, 6−1 +0.013, residual +0.014, alpha-v2 +0.014. Adverse (n=14): −0.049, −0.050, −0.071, −0.088. The state is standable (10 changes in 116 dates). Conditioning on `normal` alone raises usable momentum IC ~5× over unconditional.
 - **Decision**: keep in lab as the leading overlay candidate; not promotable yet. With n=14 adverse dates the t-stats are weak (−0.8…−1.3) — directionally consistent across four correlated signals is suggestive, not decisive. Extended-sample rerun (history to ~2005, adding 2008/2011/2015-16/2018 drawdowns) registered as the immediate follow-up.
+- **Amended 2026-08-19 (R-016)**: standing upgraded — the split replicated on 2007-2026 with n=41 adverse dates (+0.017 vs −0.053 for 12−1; t −1.4…−1.8 adverse across the family), consistent in sign across both eras.
 - **Notes**: beta-stripped signals (residual, alpha-v2) crash hardest in drawdowns, matching the momentum-crash literature.
 
 ## R-012 — Trend regime
@@ -164,6 +165,7 @@ Schema per entry:
 - **Date tested**: 2026-08-19.
 - **Result**: same direction as drawdown, weaker everywhere (normal +0.006…+0.010 vs adverse −0.014…−0.035, n=19 adverse). Nothing it captures that drawdown does not.
 - **Decision**: keep as a robustness check only; drawdown dominates it.
+- **Amended 2026-08-19 (R-016)**: reversed — on 2007-2026 trend separates as strongly as drawdown (+0.020 vs −0.043, n=56 adverse) with more adverse dates. Upgraded to co-leading overlay candidate alongside drawdown.
 
 ## R-013 — Volatility regime
 
@@ -176,6 +178,7 @@ Schema per entry:
 - **Date tested**: 2026-08-19.
 - **Result**: NOT supported — no separation, slightly inverted (6−1: +0.000 normal vs +0.023 adverse, n=27). The 20% line does not mark where momentum fails in this sample.
 - **Decision**: reject the fixed-20% volatility overlay.
+- **Amended 2026-08-19 (R-016)**: the extended sample reverses the short-sample verdict — on 2007-2026, vol>20% dates run −0.019…−0.033 vs +0.012…+0.016 normal (n=56 adverse). Reinstated to the lab, with the era-dependence itself recorded as a warning: a threshold whose verdict flips with the sample is fragile, and drawdown/trend carry the same information more stably.
 
 ## R-014 — Rebound regime (crash signature)
 
@@ -190,6 +193,7 @@ Schema per entry:
 - **Date tested**: 2026-08-19.
 - **Result**: inconclusive — the signature fired on only 3 of 116 monthly dates. This decade at monthly sampling barely contains the event the rule looks for.
 - **Decision**: stays registered; retest on the extended sample (2008-09 and 2020 rebounds) before any judgement.
+- **Amended 2026-08-19 (R-016)**: on 2007-2026 the signature fired 8 times and those dates average −0.131…−0.166 across the momentum family — the worst cells in the whole study. Too rare to be an overlay alone; advanced as a candidate *veto* condition layered on drawdown/trend.
 
 ## R-015 — Dispersion regime
 
@@ -204,6 +208,7 @@ Schema per entry:
 - **Date tested**: 2026-08-19.
 - **Result**: supported in direction, with the strongest normal-state ICs anywhere (low-dispersion dates, n=24: 12−1 +0.041, residual +0.051 t 1.8, alpha-v2 +0.052) versus ≈0 on high-dispersion dates (n=80). But the state is choppy (29 changes) and lopsided — dispersion trended up over the sample, so the expanding median lags and labels most later dates adverse.
 - **Decision**: keep in lab, promising but the definition needs work (a rolling rather than expanding baseline) before it is a standable overlay. Any refinement gets a fresh registry entry — no silent re-tuning.
+- **Amended 2026-08-19 (R-016)**: on the extended sample the expanding median balances its states (104/104) and separates modestly (+0.011…+0.020 vs −0.004…−0.019). Real but weaker than drawdown/trend; unchanged decision.
 
 ## R-016 — Extended-sample regime rerun
 
@@ -216,7 +221,27 @@ Schema per entry:
   2015-06-01 to 2005-01-01 (fresh deep cache).
 - **Expected direction**: drawdown split widens in count and holds in sign;
   rebound accumulates enough dates to be judged at all.
-- **Date registered**: 2026-08-19. **Result**: pending.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19 (Lab run 32241886160: 220 monthly dates,
+  2007-11→2026-02, 1,498 names).
+- **Result**: every definition now separates with the hypothesised sign at
+  21d. Drawdown: +0.017 (t +1.5, n=179) vs −0.053 (t −1.4, n=41) for 12−1,
+  wider for residual and alpha-v2 (−0.060/−0.070, t −1.8). Trend: +0.020
+  vs −0.043 (n=56 adverse) — no longer a weaker copy, co-leading. The
+  volatility line flipped from the short-sample rejection to −0.019…−0.033
+  adverse. Rebound fired 8 times in 19 years and averaged **−0.131 to
+  −0.166** — the worst cells anywhere, as Daniel-Moskowitz predicts.
+  Dispersion balanced its states (104/104) and separates modestly. The
+  drawdown/trend split held in BOTH eras (2016-26 short sample and this
+  extended one) — the closest available thing to out-of-sample replication.
+- **Result (context)**: unconditional 21d ICs over the full 19 years are
+  ≈0 for every signal, momentum included. On this universe the entire
+  usable signal is conditional on regime.
+- **Decision**: drawdown + trend advance to the front of the challenger
+  queue as the overlay pair; rebound is a candidate *veto* (rare but
+  catastrophic); no promotion yet — per-state t-stats remain below 2 and
+  the promotion standard also wants cost modelling and a portfolio-level
+  test of the overlay, not only ICs.
 
 ## R-017 — Quarterly EPS surprise
 
