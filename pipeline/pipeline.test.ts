@@ -205,6 +205,18 @@ describe('validate', () => {
       'BBB: published twice',
     ])
 
+    const extreme = [
+      security('AAA', { signals: { '12-1': 29.8, '6-1': 2.2 } }),
+      security('BBB', { signals: { '12-1': 120, '6-1': 1 } }),
+    ]
+    const extremeIssues = validate(extreme, manifestFor(extreme), options)
+    // A genuine hyper-momentum year (SNDK 2026 scored 29.8) warns; only a
+    // value beyond anything real prices produce blocks the publish.
+    expect(extremeIssues.filter((i) => i.level === 'error').map((i) => i.message)).toEqual([
+      'BBB: signal 12-1 = 120.0 is implausible',
+    ])
+    expect(extremeIssues.some((i) => i.level === 'warning' && i.message.startsWith('AAA'))).toBe(true)
+
     const stale = validate(
       [security('AAA'), security('BBB')],
       { ...manifestFor([security('AAA'), security('BBB')]), asOf: '2026-07-01' },

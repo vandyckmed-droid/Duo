@@ -56,9 +56,15 @@ export function validate(
       const value = s.signals[id]
       if (typeof value !== 'number' || !Number.isFinite(value)) {
         error(`${s.ticker}: signal ${id} is not a finite number`)
-      } else if (Math.abs(value) > 25) {
-        // A return/vol ratio this size is a data fault, not a stock.
+      } else if (Math.abs(value) > 75) {
+        // Beyond anything real prices have produced; a broken split or
+        // dividend adjustment lands here.
         error(`${s.ticker}: signal ${id} = ${value.toFixed(1)} is implausible`)
+      } else if (Math.abs(value) > 25) {
+        // Genuine hyper-momentum reaches this range — SNDK's 33× year to
+        // mid-2026 scored 29.8, verified against an independent source — so
+        // it is surfaced for a human eye, never used to block the publish.
+        warning(`${s.ticker}: signal ${id} = ${value.toFixed(1)} is extreme; worth a look`)
       }
     }
 
