@@ -1,9 +1,13 @@
 # Duo
 
-S&P MidCap 400 constituents ranked by 12–1 momentum or volatility.
-Phone-first, black background, white text.
+S&P MidCap 400 constituents ranked by 12–1 momentum, volatility, or
+residual return, filterable to a single GICS sector. Phone-first, black
+background, white text.
 
 Live: https://vandyckmed-droid.github.io/Duo/
+
+The active metric and sector live in the URL hash, so a ranking can be
+linked and reloaded as seen (`#metric=volatility&sector=Energy`).
 
 ## Development
 
