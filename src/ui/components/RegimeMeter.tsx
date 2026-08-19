@@ -2,27 +2,29 @@ import type { MarketRegime } from '../../domain/regime.ts'
 import { DRAWDOWN_LINE } from '../../domain/regime.ts'
 
 /**
- * The market regime as a meter instead of a sentence.
+ * The market regime as a meter that explains itself.
  *
- * One reading against one threshold: where SPY sits relative to its 52-week
- * high, with the 10%-drawdown line — the boundary the regime classification
- * actually uses — marked on the track. The dot is the market today; right of
- * the tick is the territory where momentum rankings have historically been
- * informative, left of it where they have historically weakened.
+ * The track is the last 25% of SPY's range below its 52-week high, split
+ * into two colored zones at the 10%-drawdown line — the boundary the regime
+ * classification actually uses. Green territory is where momentum rankings
+ * have historically been informative; the amber-to-red territory left of
+ * the boundary is where they have historically weakened. The dot is the
+ * market today, wearing the state's color, and the chip says the state in a
+ * word so color never carries the classification alone.
  *
- * The state word stays beside the meter so the classification is never
- * carried by color alone, and because one input cannot show everything: a
- * market near its high but negative over six months reads Caution with the
- * dot in the calm zone. The full inputs and definitions live in Settings —
- * this row is a glance, not the explanation.
+ * A number rides under the label — how far below the high SPY actually is —
+ * because a meter without its reading invites squinting. One input cannot
+ * show everything: a market near its high but negative over six months
+ * reads Caution with the dot in green territory, and the chip wins. The
+ * full inputs and definitions live in Settings; this row is a glance.
  */
 
 /** Left edge of the track: 25% below the high. Deeper clamps to the edge. */
 const SCALE_FLOOR = 0.75
 
 export function RegimeMeter({ market }: { market: MarketRegime }) {
-  const position = (value: number) =>
-    `${(Math.min(Math.max((value - SCALE_FLOOR) / (1 - SCALE_FLOOR), 0), 1) * 100).toFixed(1)}%`
+  const pos = (value: number) =>
+    Math.min(Math.max((value - SCALE_FLOOR) / (1 - SCALE_FLOOR), 0), 1) * 100
 
   const stateWord =
     market.state === 'reversal-risk'
@@ -32,16 +34,25 @@ export function RegimeMeter({ market }: { market: MarketRegime }) {
         : 'Normal'
 
   const below = (1 - market.fromHigh) * 100
+  const reading = below < 0.05 ? 'At high' : `−${below.toFixed(1)}%`
   const title = `SPY ${below < 0.05 ? 'at' : `${below.toFixed(1)}% below`} its 52-week high`
 
   return (
     <div className={`regime regime-${market.state}`} title={title}>
-      <span className="regime-label">SPY vs 52-wk high</span>
-      <span className="regime-track" aria-hidden="true">
-        <span className="regime-tick" style={{ left: position(DRAWDOWN_LINE) }} />
-        <span className="regime-dot" style={{ left: position(market.fromHigh) }} />
+      <span className="regime-id">
+        <span className="regime-kicker">SPY vs 52w high</span>
+        <span className="regime-read num">{reading}</span>
       </span>
-      <span className="regime-state">{stateWord}</span>
+      <span
+        className="regime-track"
+        aria-hidden="true"
+        style={{ '--tick': `${pos(DRAWDOWN_LINE).toFixed(1)}%` } as React.CSSProperties}
+      >
+        <span className="regime-zone-weak" />
+        <span className="regime-zone-fair" />
+        <span className="regime-dot" style={{ left: `${pos(market.fromHigh).toFixed(1)}%` }} />
+      </span>
+      <span className="regime-chip">{stateWord}</span>
     </div>
   )
 }

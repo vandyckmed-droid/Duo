@@ -713,47 +713,96 @@ button {
 .bar-value { flex: 0 0 60px; text-align: right; font-weight: 620; }
 .bar-note { flex: 0 0 66px; text-align: right; font-size: 11px; color: var(--text-faint); }
 
-/* The market-regime meter: one thin track, the 10%-drawdown threshold tick,
-   and a dot for where SPY sits against its 52-week high. The state word
-   carries the classification so color never stands alone; the track and tick
-   stay recessive. Normal is deliberately faint — the state worth noticing is
-   the exception. */
+/* The market-regime meter. Color is allowed to work here: the track is
+   two tinted zones split at the 10%-drawdown boundary the classification
+   uses — green where momentum rankings have historically been informative,
+   amber deepening toward red where they have historically weakened. The
+   dot wears the state color and the chip repeats it in a word, so the
+   meaning survives without color while the color makes it instant. */
 .regime {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
-  padding: 7px var(--pad) 9px;
-  font-size: 12px;
+  padding: 8px var(--pad) 10px;
   line-height: 1;
 }
-.regime-label { color: var(--text-faint); flex: 0 0 auto; }
+
+.regime-id {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.regime-kicker {
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.regime-read { font-size: 13px; font-weight: 650; color: var(--text); }
+
 .regime-track {
   position: relative;
   flex: 1;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--line);
+  height: 6px;
 }
-.regime-tick {
+
+/* The zones meet at the boundary with a 2px breath of background between
+   them — the seam is the threshold, no separate tick needed. */
+.regime-zone-weak,
+.regime-zone-fair {
   position: absolute;
-  top: -4px;
-  width: 1px;
-  height: 11px;
-  background: var(--text-faint);
+  top: 0;
+  height: 100%;
 }
+
+.regime-zone-weak {
+  left: 0;
+  width: calc(var(--tick) - 1px);
+  border-radius: 3px 0 0 3px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--down) 42%, transparent),
+    color-mix(in srgb, var(--warn) 34%, transparent)
+  );
+}
+
+.regime-zone-fair {
+  left: calc(var(--tick) + 1px);
+  right: 0;
+  border-radius: 0 3px 3px 0;
+  background: color-mix(in srgb, var(--up) 30%, transparent);
+}
+
 .regime-dot {
   position: absolute;
   top: 50%;
-  width: 9px;
-  height: 9px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
   background: currentColor;
+  border: 2.5px solid var(--bg);
+  box-shadow: 0 0 8px color-mix(in srgb, currentColor 65%, transparent);
 }
-.regime-state { font-weight: 620; flex: 0 0 auto; }
-.regime-normal { color: var(--text-faint); }
-.regime-normal .regime-dot { background: var(--text-dim); }
+
+.regime-chip {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.01em;
+  color: currentColor;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+}
+
+.regime-normal { color: var(--up); }
 .regime-caution { color: var(--warn); }
 .regime-reversal-risk { color: var(--down); }
 
