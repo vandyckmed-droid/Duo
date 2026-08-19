@@ -832,3 +832,52 @@ button {
   color: var(--text-faint);
   font-size: 13px;
 }
+
+/* The portfolio total. A dollar figure people retype often enough that it
+   deserves a real field, with presets beside it for the common sizes. The
+   field is the widest element on the line because the number is the point. */
+.cash-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--pad) 12px;
+}
+
+.cash-field {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+.cash-mark { font-size: 14px; font-weight: 640; color: var(--text-faint); }
+
+.cash-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  padding: 0;
+}
+
+.cash-field input:focus { outline: none; }
+.cash-line .choices { flex: 0 0 auto; padding: 0; gap: 5px; }
+.cash-line .choices button { min-height: 38px; padding: 0 11px; font-size: 12px; }
+
+/* Two lines of context on the right of a bar row: the weight the dollars came
+   from, and the volatility that set it. Kept small — the dollars lead. */
+.bar-note { line-height: 1.35; }
+
+/* Four figures read better as a square than as a row of three with one
+   orphan below it, which is what auto-fit produces at phone width. */
+.summary-grid.pairs { grid-template-columns: repeat(2, 1fr); }

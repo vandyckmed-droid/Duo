@@ -3,6 +3,7 @@ import { loadDataset, type Dataset } from '../data/dataset.ts'
 import { metric as metricById } from '../domain/metrics.ts'
 import { screen as runScreen, sectorsOf, type Screen } from '../domain/screen.ts'
 import { segmentDefinition } from '../domain/segments.ts'
+import { sectorLeaders } from '../domain/leaders.ts'
 import { isoToDisplay } from '../domain/format.ts'
 import { RegimeMeter } from './components/RegimeMeter.tsx'
 import * as state from '../state/viewState.ts'
@@ -127,6 +128,10 @@ export function App() {
   const open = view.open ? securities.find((s) => s.ticker === view.open) : undefined
   const openRow = open ? [...result.rows, ...result.unranked].find((r) => r.security.ticker === open.ticker) : undefined
 
+  // One name per sector per index. Computed here so the header count and the
+  // portfolio itself can never disagree about how many slots were filled.
+  const leaders = useMemo(() => sectorLeaders(securities), [securities])
+
   const watchedSecurities = useMemo(
     () => view.watchlist.map((t) => securities.find((s) => s.ticker === t)).filter((s) => !!s),
     [view.watchlist, securities],
@@ -153,6 +158,12 @@ export function App() {
   }
 
   const scope = describeScope(effectiveScreen, result.total)
+  const headlineCount =
+    view.tab === 'portfolio'
+      ? view.portfolioSource === 'watchlist'
+        ? view.watchlist.length
+        : leaders.slots.length
+      : result.total
 
   return (
     <div className="app">
@@ -172,8 +183,7 @@ export function App() {
               <>S&amp;P 1500 · {dataset.manifest.counts.total} names</>
             ) : (
               <>
-                {view.tab === 'portfolio' ? view.watchlist.length : result.total} name
-                {(view.tab === 'portfolio' ? view.watchlist.length : result.total) === 1 ? '' : 's'}
+                {headlineCount} name{headlineCount === 1 ? '' : 's'}
                 {' · '}
                 {isoToDisplay(dataset.manifest.asOf)}
               </>
@@ -231,7 +241,10 @@ export function App() {
 
       {view.tab === 'portfolio' && (
         <PortfolioView
-          securities={watchedSecurities}
+          leaders={leaders}
+          watched={watchedSecurities}
+          source={view.portfolioSource}
+          value={view.portfolioValue}
           scheme={view.scheme}
           capPerHolding={view.capPerHolding}
           capPerSector={view.capPerSector}

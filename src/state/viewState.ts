@@ -18,6 +18,10 @@ const KEY = 'duo.state.v1'
 
 export type Tab = 'ranked' | 'watchlist' | 'portfolio' | 'settings'
 export type Scheme = 'equal' | 'inverse-vol' | 'hrp'
+export type PortfolioSource = 'leaders' | 'watchlist'
+
+/** Default cash total for the portfolio view, in dollars. Adjustable in place. */
+export const DEFAULT_PORTFOLIO_VALUE = 30_000
 
 export interface ViewState {
   readonly screen: Screen
@@ -29,6 +33,10 @@ export interface ViewState {
   readonly scheme: Scheme
   readonly capPerHolding: number | null
   readonly capPerSector: number | null
+  /** What the portfolio is built from: sector leaders or the watchlist. */
+  readonly portfolioSource: PortfolioSource
+  /** Cash total the weights are expressed in, whole dollars. */
+  readonly portfolioValue: number
 }
 
 export const INITIAL: ViewState = {
@@ -40,6 +48,8 @@ export const INITIAL: ViewState = {
   scheme: 'inverse-vol',
   capPerHolding: null,
   capPerSector: null,
+  portfolioSource: 'leaders',
+  portfolioValue: DEFAULT_PORTFOLIO_VALUE,
 }
 
 export function load(): ViewState {
@@ -86,6 +96,8 @@ export function sanitise(input: Partial<ViewState> | null | undefined): ViewStat
     scheme: isScheme(input.scheme) ? input.scheme : 'inverse-vol',
     capPerHolding: capOrNull(input.capPerHolding),
     capPerSector: capOrNull(input.capPerSector),
+    portfolioSource: input.portfolioSource === 'watchlist' ? 'watchlist' : 'leaders',
+    portfolioValue: valueOrDefault(input.portfolioValue),
   }
 }
 
@@ -97,6 +109,12 @@ const isScheme = (v: unknown): v is Scheme =>
 
 const capOrNull = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 1 ? v : null
+
+/** A hand-edited or stale value falls back rather than dividing $NaN. */
+const valueOrDefault = (v: unknown): number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= 1 && v <= 1e9
+    ? Math.round(v)
+    : DEFAULT_PORTFOLIO_VALUE
 
 /** Adds or removes a ticker, preserving the order names were added in. */
 export function toggleWatch(watchlist: readonly string[], ticker: string): string[] {
