@@ -43,6 +43,12 @@ export function signedInteger(value: number | null | undefined): string {
   return `${n > 0 ? '+' : '−'}${Math.abs(n)}`
 }
 
+/** Whole dollars with a sign the way a brokerage statement writes them. */
+export function cash(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY
+  return `$${Math.round(value).toLocaleString('en-US')}`
+}
+
 export function price(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EMPTY
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

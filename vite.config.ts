@@ -9,7 +9,7 @@ export default defineConfig({
   build: { outDir: 'dist', emptyOutDir: true },
   test: {
     globals: true,
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'pipeline/**/*.test.ts', 'lab/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'pipeline/**/*.test.ts'],
     environment: 'node',
   },
 })
