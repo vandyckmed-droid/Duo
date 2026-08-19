@@ -8,4 +8,5 @@
 export type { Benchmark, PriceData, PriceSeries, Stock } from './types.ts'
 export { UNIVERSE } from './universe.generated.ts'
 export { loadPriceData, parsePriceData } from './loadPriceData.ts'
+export { resolveSector, sectorsIn } from './sectors.ts'
 export { logoUrl } from './logo.ts'

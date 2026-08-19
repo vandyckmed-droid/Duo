@@ -42,6 +42,23 @@ export function computeMetricValues(
 }
 
 /**
+ * Narrows precomputed values to one sector, or returns them untouched.
+ *
+ * Filtering happens after the values are computed, not before: the numbers
+ * describe a stock, not a selection, so changing the filter reorders what is
+ * already known rather than refitting a regression per stock. Ranks are then
+ * assigned within whatever survives, which is the point of the filter — a
+ * position in its sector, not its position in the index with the rest hidden.
+ */
+export function filterBySector(
+  values: readonly MetricValues[],
+  sector: string | null,
+): readonly MetricValues[] {
+  if (sector === null) return values
+  return values.filter((row) => row.stock.sector === sector)
+}
+
+/**
  * Orders precomputed values by one metric.
  *
  * Stocks the metric cannot be computed for sort to the bottom in their
