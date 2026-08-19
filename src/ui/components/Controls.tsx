@@ -169,15 +169,23 @@ export function Controls({
       )}
 
       {/* The rule is on the screen that applies it — a ranking whose
-          definition lives elsewhere is an opaque ranking. It sits on one line
-          until tapped, so being explainable costs a line rather than a fifth
-          of the screen. */}
+          definition lives elsewhere is an opaque ranking. Until tapped only
+          the metric's name shows, with an ⓘ marking that the full methodology
+          is one tap away, so being explainable costs a short line rather than
+          a paragraph. */}
       <button
-        className={`definition${expanded ? '' : ' definition-clamped'}`}
+        className="definition"
         aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
       >
-        <strong style={{ color: 'var(--text)' }}>{metric.label}.</strong> {metric.definition}
+        <strong style={{ color: 'var(--text)' }}>{metric.label}</strong>
+        {expanded ? (
+          <>. {metric.definition}</>
+        ) : (
+          <span className="definition-hint" aria-hidden="true">
+            ⓘ
+          </span>
+        )}
       </button>
     </>
   )
