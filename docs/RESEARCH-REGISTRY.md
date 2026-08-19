@@ -147,7 +147,11 @@ Schema per entry:
   `adverse`, else `normal`. Threshold fixed a priori (the conventional
   correction line), not fitted.
 - **Expected direction**: momentum ICs in `adverse` < `normal`.
-- **Date registered**: 2026-08-19. **Result**: pending.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19 (Lab run 32240224765; 116 monthly dates 2016-06→2026-02; 21d non-overlapping ICs).
+- **Result**: SUPPORTED directionally, and strongly — the one definition that separates. Normal (n=102): 12−1 +0.010, 6−1 +0.013, residual +0.014, alpha-v2 +0.014. Adverse (n=14): −0.049, −0.050, −0.071, −0.088. The state is standable (10 changes in 116 dates). Conditioning on `normal` alone raises usable momentum IC ~5× over unconditional.
+- **Decision**: keep in lab as the leading overlay candidate; not promotable yet. With n=14 adverse dates the t-stats are weak (−0.8…−1.3) — directionally consistent across four correlated signals is suggestive, not decisive. Extended-sample rerun (history to ~2005, adding 2008/2011/2015-16/2018 drawdowns) registered as the immediate follow-up.
+- **Notes**: beta-stripped signals (residual, alpha-v2) crash hardest in drawdowns, matching the momentum-crash literature.
 
 ## R-012 — Trend regime
 
@@ -156,7 +160,10 @@ Schema per entry:
 - **Signal (regime)**: SPY 126-day return < 0 → `adverse`. Threshold zero,
   fixed a priori.
 - **Expected direction**: momentum ICs in `adverse` < `normal`.
-- **Date registered**: 2026-08-19. **Result**: pending.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19.
+- **Result**: same direction as drawdown, weaker everywhere (normal +0.006…+0.010 vs adverse −0.014…−0.035, n=19 adverse). Nothing it captures that drawdown does not.
+- **Decision**: keep as a robustness check only; drawdown dominates it.
 
 ## R-013 — Volatility regime
 
@@ -165,7 +172,10 @@ Schema per entry:
 - **Signal (regime)**: SPY 63-day realised volatility > 20% annualised →
   `adverse`. Threshold fixed a priori (the conventional VIX-20 line).
 - **Expected direction**: momentum ICs in `adverse` < `normal`.
-- **Date registered**: 2026-08-19. **Result**: pending.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19.
+- **Result**: NOT supported — no separation, slightly inverted (6−1: +0.000 normal vs +0.023 adverse, n=27). The 20% line does not mark where momentum fails in this sample.
+- **Decision**: reject the fixed-20% volatility overlay.
 
 ## R-014 — Rebound regime (crash signature)
 
@@ -176,7 +186,10 @@ Schema per entry:
   return > +5% → `adverse`. Both thresholds fixed a priori.
 - **Expected direction**: the most negative momentum ICs of any state;
   expected rare.
-- **Date registered**: 2026-08-19. **Result**: pending.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19.
+- **Result**: inconclusive — the signature fired on only 3 of 116 monthly dates. This decade at monthly sampling barely contains the event the rule looks for.
+- **Decision**: stays registered; retest on the extended sample (2008-09 and 2020 rebounds) before any judgement.
 
 ## R-015 — Dispersion regime
 
@@ -187,4 +200,20 @@ Schema per entry:
   Adaptive but strictly point-in-time — each date's threshold uses only
   earlier dates; nothing is fitted on the full sample.
 - **Expected direction**: momentum ICs in `adverse` < `normal`.
+- **Date registered**: 2026-08-19.
+- **Date tested**: 2026-08-19.
+- **Result**: supported in direction, with the strongest normal-state ICs anywhere (low-dispersion dates, n=24: 12−1 +0.041, residual +0.051 t 1.8, alpha-v2 +0.052) versus ≈0 on high-dispersion dates (n=80). But the state is choppy (29 changes) and lopsided — dispersion trended up over the sample, so the expanding median lags and labels most later dates adverse.
+- **Decision**: keep in lab, promising but the definition needs work (a rolling rather than expanding baseline) before it is a standable overlay. Any refinement gets a fresh registry entry — no silent re-tuning.
+
+## R-016 — Extended-sample regime rerun
+
+- **Hypothesis**: the R-011 drawdown split and the R-014 rebound signature
+  hold on a sample containing 2005–2015 — the 2008-09 crash and rebound,
+  2011, and 2015-16 — with adverse-state counts large enough for real
+  t-stats. Identical definitions and thresholds; only the data window
+  changes.
+- **Signal**: unchanged from R-011…R-015; Lab history floor moved from
+  2015-06-01 to 2005-01-01 (fresh deep cache).
+- **Expected direction**: drawdown split widens in count and holds in sign;
+  rebound accumulates enough dates to be judged at all.
 - **Date registered**: 2026-08-19. **Result**: pending.

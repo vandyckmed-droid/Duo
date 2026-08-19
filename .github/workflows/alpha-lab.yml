@@ -29,17 +29,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The `deep2005` prefix retired the 2015-floor caches when the history
+      # floor moved (R-016): fetchFrom only extends a cached series forward,
+      # so deepening the floor needs a cold refetch, not a merge.
       - name: Restore the deep price cache
         uses: actions/cache@v4
         with:
           path: .cache/lab-prices
-          key: lab-prices-${{ github.run_id }}
+          key: lab-prices-deep2005-${{ github.run_id }}
           restore-keys: |
-            lab-prices-
+            lab-prices-deep2005-
       - name: Run the Lab
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           API_KEY: ${{ secrets.API_KEY }}
+          LAB_FROM: '2005-01-01'
         run: npx tsx lab/run.ts
       - name: Upload the report
         uses: actions/upload-artifact@v4
