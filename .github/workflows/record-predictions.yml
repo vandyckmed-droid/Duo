@@ -1,0 +1,78 @@
+# The forward prediction record.
+#
+# Once a day, after the morning publish, this snapshots exactly what the
+# production site is serving — universe.json (every published metric value,
+# membership, benchmarks), manifest.json, and a provenance stamp — onto the
+# append-only `prediction-record` branch, one directory per dataset as-of
+# date. Backtests over today's index members carry survivorship bias; this
+# branch accumulates the bias-free alternative one trading day at a time.
+#
+# Deliberate properties:
+#   - Reads only the public site. No API key, no pipeline interaction: a
+#     failure here cannot affect publishing or the app in any way.
+#   - Append-only. An existing snapshot is never rewritten — recomputing
+#     history with newer information would destroy the record's meaning.
+#   - Idempotent. If the dataset's as-of date is already recorded (weekend,
+#     holiday, re-run), the run exits without committing.
+#   - This workflow is the only V1-side artifact of the V2 program; V1
+#     application code, calculations, dataset contract and the other
+#     workflows are untouched.
+name: Record predictions
+on:
+  schedule:
+    # 11:30 UTC Tue–Sat: comfortably after the 09:00 refresh has deployed.
+    - cron: '30 11 * * 2-6'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: record-predictions
+  cancel-in-progress: false
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: prediction-record
+      - name: Snapshot what production is serving
+        env:
+          MAIN_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base="https://vandyckmed-droid.github.io/Duo/data"
+          curl -sfS "$base/universe.json" -o /tmp/universe.json
+          curl -sfS "$base/manifest.json" -o /tmp/manifest.json
+          asOf=$(node -p 'JSON.parse(require("fs").readFileSync("/tmp/manifest.json","utf8")).asOf')
+          generatedAt=$(node -p 'JSON.parse(require("fs").readFileSync("/tmp/manifest.json","utf8")).generatedAt')
+          version=$(node -p 'JSON.parse(require("fs").readFileSync("/tmp/manifest.json","utf8")).version')
+          case "$asOf" in
+            [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+            *) echo "::error::unusable asOf '$asOf'"; exit 1 ;;
+          esac
+          dir="snapshots/$asOf"
+          if [ -e "$dir" ]; then
+            echo "Snapshot for $asOf already recorded — the record is append-only; nothing to do."
+            exit 0
+          fi
+          mkdir -p "$dir"
+          cp /tmp/universe.json /tmp/manifest.json "$dir/"
+          cat > "$dir/provenance.json" <<EOF
+          {
+           "asOf": "$asOf",
+           "recordedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+           "source": "$base/",
+           "datasetGeneratedAt": "$generatedAt",
+           "datasetVersion": $version,
+           "mainShaAtRecording": "$MAIN_SHA",
+           "workflowRun": "${{ github.run_id }}",
+           "note": "Snapshot of exactly what production Pages served; never recomputed, never overwritten."
+          }
+          EOF
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            add "$dir"
+          git -c user.name=github-actions -c user.email=github-actions@github.com \
+            commit -m "Record $asOf"
+          git push origin prediction-record
+          echo "Recorded $asOf."
