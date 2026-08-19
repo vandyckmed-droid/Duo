@@ -4,7 +4,9 @@
 # on this subscription.
 name: Probe V2 data
 on:
-  workflow_dispatch:
+  push:
+    branches: [claude/reset-repository-blank-h3ll7p]
+    paths: ['pipeline/probe.ts', '.github/workflows/probe-data.yml']
 permissions:
   contents: read
 jobs:

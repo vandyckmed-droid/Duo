@@ -1,33 +1,28 @@
 # One-shot freeze machinery: creates the immutable v1.0 tag from Actions,
-# because the development credential can only push branches. Dispatched
-# manually once; refuses to move an existing tag.
+# because the development credential can only push branches and the
+# integration cannot dispatch workflows. Runs only when this file itself
+# changes on the V2 branch; once the tag exists it never moves it.
 name: Tag V1
 on:
-  workflow_dispatch:
-    inputs:
-      sha:
-        description: Commit to tag
-        required: true
-      tag:
-        description: Tag name
-        required: true
-        default: v1.0
+  push:
+    branches: [claude/reset-repository-blank-h3ll7p]
+    paths: ['.github/workflows/tag-v1.yml']
 permissions:
   contents: write
 jobs:
   tag:
     runs-on: ubuntu-latest
+    env:
+      SHA: da87d8fbf5ef02fdd9d4ac1508aed6f27f9c897f
+      TAG: v1.0
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Create the tag if it does not exist
-        env:
-          SHA: ${{ inputs.sha }}
-          TAG: ${{ inputs.tag }}
         run: |
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            echo "Tag $TAG already exists — refusing to move it."; exit 1
+            echo "Tag $TAG already exists — leaving it untouched."; exit 0
           fi
           git -c user.name=github-actions -c user.email=github-actions@github.com \
             tag -a "$TAG" "$SHA" -m "V1 frozen as the canonical control. V2 must earn the right to replace any part of it."
