@@ -20,3 +20,9 @@ export {
   standardDeviation,
   TRADING_DAYS_PER_YEAR,
 } from './volatility.ts'
+export {
+  alignedDailyReturns,
+  calculateResidualReturn,
+  estimateBeta,
+} from './marketModel.ts'
+export type { AlignedReturns } from './marketModel.ts'

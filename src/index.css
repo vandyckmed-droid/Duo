@@ -29,7 +29,7 @@
 
   --mark-size: 26px;
   --rank-width: 2.25ch;
-  --value-width: 5.5rem;
+  --value-width: 4.25rem;
   --row-height: 52px;
   --content-max: 720px;
 
@@ -265,11 +265,30 @@ button.column-label:hover {
 
 @media (max-width: 24rem) {
   :root {
-    --value-width: 4.75rem;
+    --value-width: 4rem;
     --mark-size: 22px;
   }
 
   .name {
+    display: none;
+  }
+}
+
+/*
+ * Below roughly an iPhone SE, three value columns leave too little room for
+ * the ticker. The inactive secondary metric is dropped rather than letting
+ * every column shrink past legibility — the ranked metric and one point of
+ * comparison survive, which is what the row is for.
+ */
+@media (max-width: 22rem) {
+  .columns,
+  .row {
+    grid-template-columns:
+      var(--rank-width) var(--mark-size) minmax(0, 1fr)
+      repeat(2, var(--value-width));
+  }
+
+  .value-hidden-narrow {
     display: none;
   }
 }

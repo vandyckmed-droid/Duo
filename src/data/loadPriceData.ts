@@ -6,6 +6,10 @@ interface PricesFile {
   readonly generatedAt: string
   readonly dates: readonly string[]
   readonly series: Readonly<Record<string, readonly (number | null)[]>>
+  readonly benchmark: {
+    readonly ticker: string
+    readonly closes: readonly (number | null)[]
+  }
 }
 
 /**
@@ -56,5 +60,23 @@ export function parsePriceData(file: PricesFile): PriceData {
     series[ticker] = { timestamps, closes }
   }
 
-  return { generatedAt: file.generatedAt, timestamps, series }
+  const benchmark = file.benchmark
+  if (!benchmark?.ticker || !Array.isArray(benchmark.closes)) {
+    throw new Error('Price data is missing its benchmark')
+  }
+  if (benchmark.closes.length !== timestamps.length) {
+    throw new Error(
+      `Benchmark ${benchmark.ticker} does not match the calendar`,
+    )
+  }
+
+  return {
+    generatedAt: file.generatedAt,
+    timestamps,
+    series,
+    benchmark: {
+      ticker: benchmark.ticker,
+      series: { timestamps, closes: benchmark.closes },
+    },
+  }
 }

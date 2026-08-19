@@ -14,10 +14,12 @@ export function StockRow({
   entry,
   metrics,
   activeMetricId,
+  hiddenWhenNarrowId,
 }: {
   readonly entry: Ranked
   readonly metrics: readonly Metric[]
   readonly activeMetricId: string
+  readonly hiddenWhenNarrowId: string | null
 }) {
   const { rank, stock, values } = entry
 
@@ -33,13 +35,11 @@ export function StockRow({
 
       {metrics.map((metric) => {
         const value = values[metric.id]
+        const classes = ['value']
+        if (metric.id === activeMetricId) classes.push('value-active')
+        if (metric.id === hiddenWhenNarrowId) classes.push('value-hidden-narrow')
         return (
-          <span
-            key={metric.id}
-            className={
-              metric.id === activeMetricId ? 'value value-active' : 'value'
-            }
-          >
+          <span key={metric.id} className={classes.join(' ')}>
             {value === null ? '–' : metric.format(value)}
           </span>
         )

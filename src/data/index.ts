@@ -5,7 +5,7 @@
  * so the generated dataset can be regenerated or re-sourced behind the same
  * surface.
  */
-export type { PriceData, PriceSeries, Stock } from './types.ts'
+export type { Benchmark, PriceData, PriceSeries, Stock } from './types.ts'
 export { UNIVERSE } from './universe.generated.ts'
 export { loadPriceData, parsePriceData } from './loadPriceData.ts'
 export { logoUrl } from './logo.ts'

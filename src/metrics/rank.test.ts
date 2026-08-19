@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { PriceData, Stock } from '../data/types.ts'
 import { parseIsoDateToUtc } from '../calculations/index.ts'
 import type { Metric } from './types.ts'
-import { rankBy } from './rank.ts'
+import { computeMetricValues, rankValues } from './rank.ts'
+import type { MetricValues } from './rank.ts'
 
 const STOCKS: readonly Stock[] = [
   { ticker: 'AAA', name: 'Alpha', sector: 'Tech' },
@@ -18,6 +19,10 @@ const timestamps = ['2024-01-01', '2025-01-01'].map(
 const priceData: PriceData = {
   generatedAt: '2025-01-01',
   timestamps,
+  benchmark: {
+    ticker: 'IJH',
+    series: { timestamps, closes: [100, 150] },
+  },
   series: {
     AAA: { timestamps, closes: [100, 300] },
     BBB: { timestamps, closes: [100, 200] },
@@ -47,24 +52,33 @@ const firstClose: Metric = {
   compute: (series) => series.closes[0],
 }
 
-describe('rankBy', () => {
-  it('orders descending and numbers the ranks from one', () => {
-    const result = rankBy(STOCKS, priceData, lastClose, [lastClose])
+/** Computes then orders, the two steps the app performs separately. */
+function rank(
+  stocks: readonly Stock[],
+  sortBy: Metric,
+  metrics: readonly Metric[],
+) {
+  return rankValues(computeMetricValues(stocks, priceData, metrics), sortBy)
+}
 
-    expect(result.map((r) => r.stock.ticker)).toEqual([
+describe('rankValues', () => {
+  it('orders descending and numbers the ranks from one', () => {
+    const result = rank(STOCKS, lastClose, [lastClose])
+
+    expect(result.map((r: MetricValues) => r.stock.ticker)).toEqual([
       'AAA',
       'BBB',
       'NEW',
       'CCC',
     ])
-    expect(result.map((r) => r.rank)).toEqual([1, 2, 3, 4])
+    expect(result.map((r: { rank: number | null }) => r.rank)).toEqual([1, 2, 3, 4])
   })
 
   it('orders ascending when the metric ranks smallest first', () => {
     const ascending: Metric = { ...lastClose, direction: 'asc' }
-    const result = rankBy(STOCKS, priceData, ascending, [ascending])
+    const result = rank(STOCKS, ascending, [ascending])
 
-    expect(result.map((r) => r.stock.ticker)).toEqual([
+    expect(result.map((r: MetricValues) => r.stock.ticker)).toEqual([
       'CCC',
       'NEW',
       'BBB',
@@ -73,28 +87,28 @@ describe('rankBy', () => {
   })
 
   it('sends stocks the metric cannot measure to the bottom, unranked', () => {
-    const result = rankBy(STOCKS, priceData, firstClose, [firstClose])
+    const result = rank(STOCKS, firstClose, [firstClose])
 
     expect(result.at(-1)?.stock.ticker).toBe('NEW')
     expect(result.at(-1)?.rank).toBeNull()
     // A missing measurement is not last place; it carries no rank at all.
-    expect(result.slice(0, 3).every((r) => typeof r.rank === 'number')).toBe(
+    expect(result.slice(0, 3).every((r: { rank: number | null }) => typeof r.rank === 'number')).toBe(
       true,
     )
   })
 
   it('computes every metric, not only the one being sorted by', () => {
-    const result = rankBy(STOCKS, priceData, lastClose, [lastClose, firstClose])
+    const result = rank(STOCKS, lastClose, [lastClose, firstClose])
 
     expect(result[0].values).toEqual({ last: 300, first: 100 })
   })
 
   it('keeps every stock when no stock can be measured', () => {
-    const result = rankBy(STOCKS, priceData, missing, [missing])
+    const result = rank(STOCKS, missing, [missing])
 
     expect(result).toHaveLength(STOCKS.length)
-    expect(result.every((r) => r.rank === null)).toBe(true)
-    expect(result.map((r) => r.stock.ticker)).toEqual([
+    expect(result.every((r: { rank: number | null }) => r.rank === null)).toBe(true)
+    expect(result.map((r: MetricValues) => r.stock.ticker)).toEqual([
       'AAA',
       'BBB',
       'CCC',
@@ -104,10 +118,10 @@ describe('rankBy', () => {
 
   it('gives a stock with no price history null values rather than dropping it', () => {
     const orphan: Stock = { ticker: 'GONE', name: 'No Data', sector: 'Tech' }
-    const result = rankBy([...STOCKS, orphan], priceData, lastClose, [lastClose])
+    const result = rank([...STOCKS, orphan], lastClose, [lastClose])
 
     expect(result).toHaveLength(5)
-    expect(result.find((r) => r.stock.ticker === 'GONE')).toMatchObject({
+    expect(result.find((r: MetricValues) => r.stock.ticker === 'GONE')).toMatchObject({
       rank: null,
       values: { last: null },
     })
