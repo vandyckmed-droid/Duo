@@ -4,7 +4,7 @@ import { metric as metricById } from '../domain/metrics.ts'
 import { screen as runScreen, sectorsOf, type Screen } from '../domain/screen.ts'
 import { segmentDefinition } from '../domain/segments.ts'
 import { isoToDisplay } from '../domain/format.ts'
-import { describeRegime } from '../domain/regime.ts'
+import { RegimeMeter } from './components/RegimeMeter.tsx'
 import * as state from '../state/viewState.ts'
 import { Controls } from './components/Controls.tsx'
 import { RankedList } from './components/RankedList.tsx'
@@ -194,9 +194,7 @@ export function App() {
         )}
 
         {(view.tab === 'ranked' || onWatchlistTab) && dataset.manifest.market && (
-          <p className={`regime regime-${dataset.manifest.market.state}`}>
-            {describeRegime(dataset.manifest.market)}
-          </p>
+          <RegimeMeter market={dataset.manifest.market} />
         )}
       </header>
 
