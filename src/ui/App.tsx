@@ -174,7 +174,7 @@ export function App() {
               <>
                 {view.tab === 'portfolio' ? view.watchlist.length : result.total} name
                 {(view.tab === 'portfolio' ? view.watchlist.length : result.total) === 1 ? '' : 's'}
-                <br />
+                {' · '}
                 {isoToDisplay(dataset.manifest.asOf)}
               </>
             )}

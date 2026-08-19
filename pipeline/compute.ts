@@ -7,6 +7,7 @@ import {
   observationCount,
   realisedVolatility,
   residualReturn,
+  residualVolatility,
   returnBetween,
   returnPerVol,
   valueOrNull,
@@ -170,6 +171,9 @@ export function computeSecurity(
     marketCap: input.marketCap,
     returns,
     residuals,
+    residualVol: valueOrNull(
+      residualVolatility(closes, benchmark, betaFit, WINDOWS['12-1'], anchor),
+    ),
     volatility,
     returnPerVol: valueOrNull(returnPerVol(twelveMonth, yearVol)),
     maxDrawdown: valueOrNull(maxDrawdown(closes, DRAWDOWN_LOOKBACK, anchor)),

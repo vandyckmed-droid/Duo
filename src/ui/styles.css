@@ -110,11 +110,11 @@ button {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px var(--pad) 6px;
+  padding: 8px var(--pad) 3px;
 }
 
 .title {
-  font-size: 21px;
+  font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -126,37 +126,52 @@ button {
   white-space: nowrap;
 }
 
-/* Horizontally scrolling control strips: the metric picker and the filters.
-   Underlines rather than capsules — the active state is a weight change and a
-   rule, not a container. */
+/* The metric strip: one horizontally scrolling row of capsules, grouped by
+   signal family with hairline dividers, the active metric a filled pill in
+   the same language as the segment control below it. Edge fades stand in
+   for a scrollbar — content dissolving at the edge says "there is more"
+   without chrome. */
 .strip {
   display: flex;
-  gap: 18px;
-  padding: 0 var(--pad);
+  align-items: center;
+  gap: 4px;
+  padding: 5px var(--pad) 7px;
   overflow-x: auto;
   scrollbar-width: none;
   scroll-snap-type: x proximity;
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 14px, #000 calc(100% - 18px), transparent);
 }
 
 .strip::-webkit-scrollbar { display: none; }
 
 .strip-item {
   flex: 0 0 auto;
-  padding: 9px 0 8px;
+  padding: 6px 11px;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--text-faint);
-  border-bottom: 2px solid transparent;
+  border-radius: 8px;
   scroll-snap-align: center;
   white-space: nowrap;
-  min-height: 40px;
+  min-height: 32px;
 }
 
 .strip-item[aria-pressed='true'],
 .strip-item[aria-selected='true'] {
-  color: var(--text);
-  border-bottom-color: var(--accent);
+  color: var(--bg);
+  background: var(--accent);
+}
+
+/* Family boundary inside the strip: a hairline, not a label — the grouping
+   should be felt while scanning, not read. */
+.strip-gap {
+  flex: 0 0 auto;
+  width: 1px;
+  align-self: stretch;
+  margin: 7px 5px;
+  background: var(--line);
 }
 
 .subhead {

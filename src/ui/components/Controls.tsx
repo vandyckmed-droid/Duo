@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { METRICS } from '../../domain/metrics.ts'
 import type { Metric } from '../../domain/metrics.ts'
 import type { Screen } from '../../domain/screen.ts'
@@ -42,16 +42,20 @@ export function Controls({
   return (
     <>
       <div className="strip" role="tablist" aria-label="Ranking variable">
-        {METRICS.map((m) => (
-          <button
-            key={m.id}
-            role="tab"
-            className="strip-item"
-            aria-selected={m.id === screen.metricId}
-            onClick={() => onChange({ metricId: m.id })}
-          >
-            {m.short}
-          </button>
+        {METRICS.map((m, i) => (
+          <Fragment key={m.id}>
+            {i > 0 && METRICS[i - 1]?.family !== m.family && (
+              <span className="strip-gap" aria-hidden="true" />
+            )}
+            <button
+              role="tab"
+              className="strip-item"
+              aria-selected={m.id === screen.metricId}
+              onClick={() => onChange({ metricId: m.id })}
+            >
+              {m.short}
+            </button>
+          </Fragment>
         ))}
       </div>
 
