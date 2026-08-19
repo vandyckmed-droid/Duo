@@ -21,5 +21,8 @@ jobs:
       - run: npm ci
       - name: Probe endpoints
         env:
+          # Same dual naming as publish.yml: the secret exists under one of
+          # these and the pipeline takes whichever is set.
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
         run: npx tsx pipeline/probe.ts
