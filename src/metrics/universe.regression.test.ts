@@ -72,11 +72,13 @@ describe('the committed universe', () => {
   })
 
   it('formats every real value within the width three columns allow', () => {
+    // Six characters is what the column width is sized for, so this asserts
+    // the budget itself rather than the slack around it.
     for (const metric of METRICS) {
       for (const row of values) {
         const value = row.values[metric.id]
         if (value !== null) {
-          expect(metric.format(value).length).toBeLessThanOrEqual(7)
+          expect(metric.format(value).length).toBeLessThanOrEqual(6)
         }
       }
     }

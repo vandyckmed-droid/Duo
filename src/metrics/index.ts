@@ -37,7 +37,10 @@ export const MOMENTUM_WINDOW: MonthWindow = {
  */
 function percent(value: number, signed: boolean): string {
   const scaled = value * 100
-  const digits = Math.abs(scaled) >= 100 ? 0 : 1
+  // Threshold sits below 100 rather than at it: a value like 99.98 would
+  // otherwise keep its decimal and then round up to "100.0%", the one case
+  // that escapes the six-character budget the column width depends on.
+  const digits = Math.abs(scaled) >= 99.95 ? 0 : 1
   const sign = !signed ? '' : scaled > 0 ? '+' : scaled < 0 ? '−' : ''
   return `${sign}${Math.abs(scaled).toFixed(digits)}%`
 }
