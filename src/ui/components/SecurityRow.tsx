@@ -1,7 +1,14 @@
 import { memo } from 'react'
 import type { RankedSecurity } from '../../calc/ranking.ts'
+
 import { formatScore } from '../format.ts'
 import { RangeBar } from './RangeBar.tsx'
+
+/** A ranked row as displayed: in Diversified mode `rank` is the position in
+ * the diversified list and `rawRank` keeps the signal's own rank visible. */
+export interface DisplayRow extends RankedSecurity {
+  readonly rawRank?: number
+}
 
 /**
  * One line of the product: Rank · Ticker · Company · Score · Sector, with the
@@ -15,7 +22,7 @@ export const SecurityRow = memo(function SecurityRow({
   onToggleSelect,
   onToggleWatch,
 }: {
-  row: RankedSecurity
+  row: DisplayRow
   selected: boolean
   watched: boolean
   onToggleSelect: (ticker: string) => void
@@ -34,6 +41,7 @@ export const SecurityRow = memo(function SecurityRow({
         <div className="row-line">
           <span className="row-rank">{row.rank}</span>
           <span className="row-ticker">{s.ticker}</span>
+          {row.rawRank !== undefined && <span className="row-raw-rank">Raw #{row.rawRank}</span>}
           <span className="row-score">{formatScore(row.score)}</span>
         </div>
         <div className="row-line">

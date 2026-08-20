@@ -12,7 +12,7 @@ import {
   resolveSegmentConflicts,
   resolveShareClasses,
 } from './membership.ts'
-import { hasErrors, validate } from './validate.ts'
+import { hasErrors, validate, validateDiversified } from './validate.ts'
 
 /** `days` trading days (weekdays) of steady-growth prices ending 2026-08-18. */
 function points(days: number, rate = 0.001, until = '2026-08-18'): PricePoint[] {
@@ -223,5 +223,32 @@ describe('validate', () => {
       options,
     )
     expect(hasErrors(stale)).toBe(true)
+  })
+
+  it('checks the Diversified 50 for coherence with its universe', () => {
+    const securities = [security('AAA'), security('BBB'), security('CCC')]
+    const config = { correlationWindow: 252, similarityNeighbors: 3, lambda: 1, listSize: 2 }
+    const good = {
+      config,
+      picks: [
+        { ticker: 'AAA', rawRank: 1, similarity: 0 },
+        { ticker: 'CCC', rawRank: 3, similarity: 0.4 },
+      ],
+    }
+    expect(hasErrors(validateDiversified(good, securities))).toBe(false)
+
+    const bad = {
+      config,
+      picks: [
+        { ticker: 'ZZZ', rawRank: 2, similarity: 0 },
+        { ticker: 'ZZZ', rawRank: 9, similarity: 2 },
+      ],
+    }
+    const messages = validateDiversified(bad, securities).map((i) => i.message)
+    expect(messages).toContain('diversified: ZZZ is not in the published universe')
+    expect(messages).toContain('diversified: ZZZ picked twice')
+    expect(messages).toContain('diversified: ZZZ has raw rank 9')
+    expect(messages).toContain('diversified: ZZZ has similarity 2')
+    expect(messages).toContain('diversified: first pick ZZZ is raw #2, not the raw #1')
   })
 })

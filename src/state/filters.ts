@@ -15,10 +15,10 @@ export interface Filters {
 
 export const NO_FILTERS: Filters = { query: '', sector: 'all', segment: 'all' }
 
-export function applyFilters(
-  rows: readonly RankedSecurity[],
+export function applyFilters<T extends RankedSecurity>(
+  rows: readonly T[],
   filters: Filters,
-): RankedSecurity[] {
+): T[] {
   const query = filters.query.trim().toLowerCase()
   return rows.filter(({ security }) => {
     if (filters.segment !== 'all' && security.segment !== filters.segment) return false

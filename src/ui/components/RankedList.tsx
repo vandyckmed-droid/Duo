@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { RankedSecurity } from '../../calc/ranking.ts'
-import { SecurityRow } from './SecurityRow.tsx'
+import { type DisplayRow, SecurityRow } from './SecurityRow.tsx'
 
 const PAGE = 80
 
@@ -19,7 +18,7 @@ export function RankedList({
   onToggleSelect,
   onToggleWatch,
 }: {
-  rows: readonly RankedSecurity[]
+  rows: readonly DisplayRow[]
   isSelected: (ticker: string) => boolean
   isWatched: (ticker: string) => boolean
   onToggleSelect: (ticker: string) => void

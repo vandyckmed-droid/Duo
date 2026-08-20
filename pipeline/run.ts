@@ -1,4 +1,7 @@
 import { resolve } from 'node:path'
+import { DIVERSIFICATION, selectDiversified } from '../src/calc/diversify.ts'
+import { BLENDED_MOMENTUM, rankUniverse } from '../src/calc/ranking.ts'
+import { residualReturns } from '../src/calc/residual.ts'
 import { SIGNAL_WINDOWS } from '../src/calc/signals.ts'
 import { lastValidIndex, observationCount } from '../src/calc/series.ts'
 import { DATASET_VERSION, type Manifest } from '../src/domain/dataset.ts'
@@ -14,7 +17,7 @@ import {
   resolveShareClasses,
 } from './membership.ts'
 import { publish } from './publish.ts'
-import { hasErrors, validate } from './validate.ts'
+import { hasErrors, validate, validateDiversified } from './validate.ts'
 
 /**
  * The refresh.
@@ -107,6 +110,8 @@ async function main(): Promise<void> {
     const series = await cache.read(member.ticker)
     if (series && series.points.length > 0) securityPoints.set(member.ticker, series.points)
   }
+  // The anchor rides along so its aligned closes exist for beta and residuals.
+  securityPoints.set(CALENDAR_TICKER, anchorPoints)
 
   const aligned = alignToCalendar(anchorPoints, securityPoints)
   log(
@@ -134,6 +139,35 @@ async function main(): Promise<void> {
   const computed = computeUniverse(universe, aligned)
   log(`  ${computed.securities.length} securities, ${computed.excluded.length} without usable history`)
 
+  log('Selecting the Diversified 50…')
+  const marketCloses = aligned.closes.get(CALENDAR_TICKER) ?? []
+  const ranked = rankUniverse(computed.securities, BLENDED_MOMENTUM)
+  const residuals = new Map(
+    ranked.map((r) => [
+      r.security.ticker,
+      residualReturns(
+        aligned.closes.get(r.security.ticker) ?? [],
+        marketCloses,
+        DIVERSIFICATION.correlationWindow,
+      ),
+    ]),
+  )
+  const diversified = {
+    config: {
+      correlationWindow: DIVERSIFICATION.correlationWindow,
+      similarityNeighbors: DIVERSIFICATION.similarityNeighbors,
+      lambda: DIVERSIFICATION.lambda,
+      listSize: DIVERSIFICATION.listSize,
+    },
+    picks: selectDiversified(
+      ranked.map((r) => ({ ticker: r.security.ticker, score: r.score })),
+      residuals,
+      DIVERSIFICATION,
+    ),
+  }
+  const displaced = diversified.picks.filter((p, i) => p.rawRank !== i + 1).length
+  log(`  ${diversified.picks.length} picks (λ=${DIVERSIFICATION.lambda}); ${displaced} sit away from their raw rank`)
+
   const counts: Partial<Record<Segment, number>> = {}
   for (const segment of SEGMENTS) {
     counts[segment.id] = computed.securities.filter((s) => s.segment === segment.id).length
@@ -152,9 +186,12 @@ async function main(): Promise<void> {
   }
 
   log('Validating…')
-  const issues = validate(computed.securities, manifest, {
-    minimumSecurities: limit > 0 ? Math.min(60, universe.length) : 900,
-  })
+  const issues = [
+    ...validate(computed.securities, manifest, {
+      minimumSecurities: limit > 0 ? Math.min(60, universe.length) : 900,
+    }),
+    ...validateDiversified(diversified, computed.securities),
+  ]
   for (const issue of issues) log(`  [${issue.level}] ${issue.message}`)
   if (hasErrors(issues)) {
     // Nothing is written. The dataset already being served is the last one
@@ -164,7 +201,7 @@ async function main(): Promise<void> {
     )
   }
 
-  const result = await publish(OUTPUT_DIR, manifest, computed.securities)
+  const result = await publish(OUTPUT_DIR, manifest, computed.securities, diversified)
 
   log(`\nPublished ${(result.bytes / 1e6).toFixed(2)} MB to ${result.directory}`)
   log(

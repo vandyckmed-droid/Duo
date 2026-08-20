@@ -2,6 +2,7 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   DATASET_VERSION,
+  type DiversifiedList,
   type Manifest,
   type SecurityRecord,
   type UniverseFile,
@@ -29,6 +30,7 @@ export async function publish(
   target: string,
   manifest: Manifest,
   securities: readonly SecurityRecord[],
+  diversified: DiversifiedList,
 ): Promise<PublishResult> {
   const staging = `${target}.staging`
   await rm(staging, { recursive: true, force: true })
@@ -42,7 +44,12 @@ export async function publish(
 
   await write('manifest.json', JSON.stringify(manifest))
 
-  const universe: UniverseFile = { version: DATASET_VERSION, asOf: manifest.asOf, securities }
+  const universe: UniverseFile = {
+    version: DATASET_VERSION,
+    asOf: manifest.asOf,
+    securities,
+    diversified,
+  }
   // Six decimals on every published number. A signal carries about four
   // meaningful digits and the interface shows two; the seventeen digits a
   // float serialises to are transfer size spent on precision nobody can see.

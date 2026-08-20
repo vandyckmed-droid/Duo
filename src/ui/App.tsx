@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { BLENDED_MOMENTUM, rankUniverse } from '../calc/ranking.ts'
 import { applyFilters, type Filters, NO_FILTERS, sectorsOf } from '../state/filters.ts'
 import { BasketView } from './components/BasketView.tsx'
+import type { DisplayRow } from './components/SecurityRow.tsx'
 import { FilterBar } from './components/FilterBar.tsx'
 import { RankedList } from './components/RankedList.tsx'
 import { type Tab, TabBar } from './components/TabBar.tsx'
@@ -21,6 +22,7 @@ export function App() {
   const basket = useBasket()
   const watchlist = useWatchlist()
   const [tab, setTab] = useState<Tab>('ranking')
+  const [mode, setMode] = useState<'raw' | 'diversified'>('raw')
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
 
   const ranked = useMemo(
@@ -29,7 +31,22 @@ export function App() {
   )
   const byTicker = useMemo(() => new Map(ranked.map((r) => [r.security.ticker, r])), [ranked])
   const sectors = useMemo(() => sectorsOf(ranked), [ranked])
-  const filtered = useMemo(() => applyFilters(ranked, filters), [ranked, filters])
+
+  // The Diversified 50, precomputed by the pipeline: mapped onto the app's
+  // own ranking so each pick shows its list position and keeps its raw rank.
+  const diversifiedRows = useMemo<DisplayRow[]>(() => {
+    if (dataset.status !== 'ready' || !dataset.universe.diversified) return []
+    const rows: DisplayRow[] = []
+    for (const pick of dataset.universe.diversified.picks) {
+      const row = byTicker.get(pick.ticker)
+      if (row) rows.push({ ...row, rank: rows.length + 1, rawRank: row.rank })
+    }
+    return rows
+  }, [dataset, byTicker])
+
+  const hasDiversified = diversifiedRows.length > 0
+  const rows = mode === 'diversified' && hasDiversified ? diversifiedRows : ranked
+  const filtered = useMemo(() => applyFilters(rows, filters), [rows, filters])
 
   return (
     <div className="app">
@@ -61,11 +78,31 @@ export function App() {
         <main className="content">
           {tab === 'ranking' && (
             <>
+              {hasDiversified && (
+                <div className="mode" role="group" aria-label="Ranking mode">
+                  <button
+                    type="button"
+                    className={mode === 'raw' ? 'is-active' : ''}
+                    aria-pressed={mode === 'raw'}
+                    onClick={() => setMode('raw')}
+                  >
+                    Raw
+                  </button>
+                  <button
+                    type="button"
+                    className={mode === 'diversified' ? 'is-active' : ''}
+                    aria-pressed={mode === 'diversified'}
+                    onClick={() => setMode('diversified')}
+                  >
+                    Diversified
+                  </button>
+                </div>
+              )}
               <FilterBar filters={filters} sectors={sectors} onChange={setFilters} />
               <div className="list-meta">
-                {filtered.length === ranked.length
-                  ? `${ranked.length} stocks`
-                  : `${filtered.length} of ${ranked.length} stocks`}
+                {filtered.length === rows.length
+                  ? `${rows.length} stocks${mode === 'diversified' && hasDiversified ? ' · correlation-diversified' : ''}`
+                  : `${filtered.length} of ${rows.length} stocks`}
               </div>
               {filtered.length === 0 ? (
                 <div className="empty">

@@ -1,5 +1,5 @@
 import { SIGNAL_IDS } from '../src/calc/signals.ts'
-import type { Manifest, SecurityRecord } from '../src/domain/dataset.ts'
+import type { DiversifiedList, Manifest, SecurityRecord } from '../src/domain/dataset.ts'
 import { SEGMENT_IDS, type Segment } from '../src/domain/segments.ts'
 
 /**
@@ -86,6 +86,47 @@ export function validate(
   }
   if (manifest.excluded.length > 120) {
     warning(`${manifest.excluded.length} exclusions — worth reading the reasons`)
+  }
+
+  return issues
+}
+
+/**
+ * The Diversified 50 must be internally coherent with the universe it ships
+ * inside: the right length, no repeats, every ticker published, and the first
+ * pick equal to the raw #1 — the one property of the greedy construction that
+ * can be asserted without re-running it.
+ */
+export function validateDiversified(
+  diversified: DiversifiedList,
+  securities: readonly SecurityRecord[],
+): Issue[] {
+  const issues: Issue[] = []
+  const error = (message: string) => issues.push({ level: 'error', message })
+
+  const expected = Math.min(diversified.config.listSize, securities.length)
+  if (diversified.picks.length !== expected) {
+    error(`diversified: ${diversified.picks.length} picks; expected ${expected}`)
+  }
+
+  const published = new Set(securities.map((s) => s.ticker))
+  const seen = new Set<string>()
+  for (const pick of diversified.picks) {
+    if (seen.has(pick.ticker)) error(`diversified: ${pick.ticker} picked twice`)
+    seen.add(pick.ticker)
+    if (!published.has(pick.ticker)) {
+      error(`diversified: ${pick.ticker} is not in the published universe`)
+    }
+    if (!Number.isInteger(pick.rawRank) || pick.rawRank < 1 || pick.rawRank > securities.length) {
+      error(`diversified: ${pick.ticker} has raw rank ${pick.rawRank}`)
+    }
+    if (!Number.isFinite(pick.similarity) || pick.similarity < 0 || pick.similarity > 1) {
+      error(`diversified: ${pick.ticker} has similarity ${pick.similarity}`)
+    }
+  }
+
+  if (diversified.picks[0] && diversified.picks[0].rawRank !== 1) {
+    error(`diversified: first pick ${diversified.picks[0].ticker} is raw #${diversified.picks[0].rawRank}, not the raw #1`)
   }
 
   return issues

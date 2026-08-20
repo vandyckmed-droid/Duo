@@ -10,6 +10,16 @@ Each signal is the window's return divided by annualised daily volatility over
 the same span. The two are z-normalised across the universe and blended 50/50
 into the final score. That blend is V1's one and only ranking.
 
+**Diversified 50 (V1.1).** A second view of the same ranking: fifty stocks
+chosen greedily by `momentum score − λ × similarity`, where similarity is the
+candidate's average correlation — on market-residual daily returns over 252
+days — to the three already-selected stocks it most resembles. No sector,
+industry, or index quotas: correlation itself identifies when two stocks are
+the same bet, and redundancy is a penalty, never a rule. The selection is
+precomputed by the pipeline (λ and friends live in
+`src/calc/diversify.ts`) and shipped inside `universe.json`; each pick keeps
+its raw rank so displacement stays visible.
+
 **Selection.** Tap a row to add it to the basket (equal weights by default,
 editable while always summing to 100%). Star a row to watch it. Both persist
 locally on the device, independently of each other.

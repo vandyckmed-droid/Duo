@@ -20,7 +20,7 @@ import type { Segment } from './segments.ts'
  * dataset format or a UI rewrite.
  */
 
-export const DATASET_VERSION = 4
+export const DATASET_VERSION = 5
 
 /**
  * A ranking signal's identity. `'12-1'` and `'6-1'` exist today; the type is
@@ -49,10 +49,34 @@ export interface SecurityRecord {
   readonly high52: number
 }
 
+/**
+ * The Diversified 50, precomputed by the pipeline: correlation between
+ * market-residual daily returns penalises redundancy, with no sector,
+ * industry, or index quotas. The picks are ordered; `rawRank` keeps signal
+ * displacement visible, and `config` records the parameters (λ above all)
+ * that produced this particular list.
+ */
+export interface DiversifiedList {
+  readonly config: {
+    readonly correlationWindow: number
+    readonly similarityNeighbors: number
+    readonly lambda: number
+    readonly listSize: number
+  }
+  readonly picks: readonly {
+    readonly ticker: string
+    readonly rawRank: number
+    /** Average correlation to its most-similar selected stocks, at selection. */
+    readonly similarity: number
+  }[]
+}
+
 export interface UniverseFile {
   readonly version: number
   readonly asOf: string
   readonly securities: readonly SecurityRecord[]
+  /** Absent in datasets published before V1.1; the app hides the mode then. */
+  readonly diversified?: DiversifiedList
 }
 
 /** How one segment's membership was resolved, recorded per run. */
