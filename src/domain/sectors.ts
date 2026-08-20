@@ -7,7 +7,7 @@
  * proper ("Information Technology", "Financials", "Health Care").
  *
  * Left alone, the two produce seventeen sectors instead of eleven, and the
- * sector filter quietly stops composing with the segment filter: choosing
+ * sector filter quietly stops composing with the size filter: choosing
  * Financials would show the 400 and the 600 and silently omit every large-cap
  * bank. So every provider label is mapped onto one canonical GICS name here,
  * once, before anything downstream sees it.

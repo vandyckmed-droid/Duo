@@ -18,5 +18,5 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["pipeline", "src/engine", "src/domain"]
+  "include": ["pipeline", "src/calc", "src/domain"]
 }

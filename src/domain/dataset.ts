@@ -1,145 +1,110 @@
 import type { Segment } from './segments.ts'
-import type { MarketRegime } from './regime.ts'
-import type { VolatilityWindowId, WindowId } from './windows.ts'
 
 /**
- * The published dataset: the contract between the build pipeline and the
- * interface.
+ * The published dataset: the contract between the build pipeline and the app.
  *
- * The interface knows this shape and nothing else. It has never heard of
- * Financial Modeling Prep, and swapping the provider changes only the code
- * that produces these files.
+ * The app knows this shape and nothing else. It has never heard of Financial
+ * Modeling Prep, and swapping the provider changes only the code that produces
+ * these files.
  *
- * The split is deliberate. `universe.json` holds every number the ranked list
- * needs and is the single request made at startup, so the list can render
- * before anything else loads. Price series are one file per ticker, fetched
- * only when a chart or a portfolio actually needs them — a phone should not
- * download three years of daily closes for 1,500 names to sort a list.
+ * Two files, both static JSON served next to the app:
+ *
+ *  - `data/universe.json` — every number the interface needs, in one request.
+ *  - `data/manifest.json` — provenance and run metadata, for operations and
+ *    the forward prediction record; the app itself never fetches it.
+ *
+ * The pipeline publishes per-security **signal values** (each window's
+ * volatility-adjusted return), not scores or ranks. Cross-sectional
+ * normalisation, blending and ranking happen in the app from a `RankSpec`, so
+ * a new signal is a new key in `signals` plus a spec entry — never a new
+ * dataset format or a UI rewrite.
  */
 
-export const DATASET_VERSION = 3
+export const DATASET_VERSION = 5
 
-/** Numbers keyed by window. `null` means genuinely unavailable, never zero. */
-export type ByWindow = Partial<Record<WindowId, number | null>>
-export type ByVolatilityWindow = Partial<Record<VolatilityWindowId, number | null>>
+/**
+ * A ranking signal's identity. `'12-1'` and `'6-1'` exist today; the type is
+ * open so a future window or a residual-return signal is additive.
+ */
+export type SignalId = string
 
 export interface SecurityRecord {
   readonly ticker: string
   readonly name: string
   readonly segment: Segment
-  /** The segment's benchmark ETF. Stored per security so a row can name it. */
-  readonly benchmark: string
   readonly sector: string
-  readonly industry: string
-  readonly marketCap: number | null
-
-  readonly returns: ByWindow
-  readonly residuals: ByWindow
   /**
-   * Annualised volatility of daily residuals over the 12−1 window (optional —
-   * absent in older datasets). The denominator of residual-per-volatility.
+   * Volatility-adjusted momentum per window: the window's total return divided
+   * by annualised daily volatility over the same formation span. Raw values —
+   * cross-sectional normalisation happens in the app. Every published security
+   * carries every signal; a name that cannot support one is excluded by the
+   * pipeline and listed in the manifest instead.
    */
-  readonly residualVol?: number | null
-  /**
-   * Volatility over each ranking window's formation span (optional): raw
-   * daily returns and daily residuals respectively, annualised. The ÷ Vol
-   * ranking dimension divides a window's return by the matching entry, so
-   * numerator and denominator always cover the same days and the same series.
-   */
-  readonly rankVol?: ByWindow
-  readonly rankResidualVol?: ByWindow
-  readonly volatility: ByVolatilityWindow
-  /** 12-month return divided by 1-year annualised volatility. */
-  readonly returnPerVol: number | null
-  /** Deepest peak-to-trough fall over the trailing year, negative. */
-  readonly maxDrawdown: number | null
-
-  readonly beta: number | null
-  /** Share of the stock's variance the benchmark explains. */
-  readonly betaR2: number | null
-  readonly betaObservations: number
-
-  readonly last: number | null
-  readonly lastDate: string | null
-  readonly low52: number | null
-  readonly high52: number | null
-
-  /**
-   * The latest earnings announcement within the last 63 trading days
-   * (optional — absent when there is none, or in older datasets).
-   * `surprise` is actual minus estimated EPS as a share of the
-   * announcement-day close; `sinceReturn` is the return from the
-   * announcement's trading day to the as-of date.
-   */
-  readonly earnings?: {
-    readonly date: string
-    readonly epsActual: number | null
-    readonly epsEstimated: number | null
-    readonly surprise: number | null
-    readonly sinceReturn: number | null
-  }
-
-  /** Usable observations held for this security, and their span. */
-  readonly history: { days: number; from: string | null; to: string | null }
-
-  /**
-   * The same metrics evaluated 63 trading days earlier, from the cached
-   * history. Rank change is the difference between rankings built from
-   * `returns` and from `prior.returns` — no rank is ever stored, so a rank
-   * always means "position within the list you are looking at".
-   */
-  readonly prior: {
-    readonly returns: ByWindow
-    readonly residuals: ByWindow
-    readonly volatility: ByVolatilityWindow
-    readonly returnPerVol: number | null
-    readonly marketCap: number | null
-  }
-
-  /** Set when the provider returned nothing new this run. */
-  readonly stale?: boolean
+  readonly signals: Readonly<Record<SignalId, number>>
+  /** Latest adjusted close and its date. */
+  readonly last: number
+  readonly lastDate: string
+  /** 52-week range of adjusted closes, consistent with `last`. */
+  readonly low52: number
+  readonly high52: number
 }
 
-export interface Provenance {
-  readonly segment: Segment
-  /** Where membership came from, e.g. `fmp:sp500-constituent`. */
-  readonly source: string
-  readonly detail: string
-  readonly count: number
-}
-
-export interface Manifest {
-  readonly version: number
-  readonly generatedAt: string
-  /** Last trading day in the dataset. */
-  readonly asOf: string
-  readonly provider: string
-  readonly benchmarks: Record<Segment, string>
-  readonly membership: readonly Provenance[]
-  readonly counts: { total: number } & Partial<Record<Segment, number>>
-  readonly calendarDays: number
-  readonly windows: Record<string, { formation: number; skip: number }>
-  readonly betaLookback: number
-  readonly rankChangeOffset: number
-  /** Names dropped this run and why, so thin coverage is explainable. */
-  readonly excluded: readonly { ticker: string; reason: string }[]
-  /**
-   * The market momentum regime at the dataset's as-of date (optional —
-   * absent in older datasets, and either side of the contract works
-   * without the other).
-   */
-  readonly market?: MarketRegime
+/**
+ * The Diversified 50, precomputed by the pipeline: correlation between
+ * market-residual daily returns penalises redundancy, with no sector,
+ * industry, or index quotas. The picks are ordered; `rawRank` keeps signal
+ * displacement visible, and `config` records the parameters (λ above all)
+ * that produced this particular list.
+ */
+export interface DiversifiedList {
+  readonly config: {
+    readonly correlationWindow: number
+    readonly similarityNeighbors: number
+    readonly lambda: number
+    readonly listSize: number
+  }
+  readonly picks: readonly {
+    readonly ticker: string
+    readonly rawRank: number
+    /** Average correlation to its most-similar selected stocks, at selection. */
+    readonly similarity: number
+  }[]
 }
 
 export interface UniverseFile {
   readonly version: number
   readonly asOf: string
   readonly securities: readonly SecurityRecord[]
+  /** Absent in datasets published before V1.1; the app hides the mode then. */
+  readonly diversified?: DiversifiedList
 }
 
-/** One ticker's adjusted closes, fetched on demand for charts and portfolios. */
-export interface SeriesFile {
+/** How one segment's membership was resolved, recorded per run. */
+export interface Provenance {
+  readonly segment: Segment
+  readonly source: string
+  readonly detail: string
+  readonly count: number
+}
+
+export interface Exclusion {
   readonly ticker: string
-  readonly dates: readonly string[]
-  readonly closes: readonly (number | null)[]
+  readonly reason: string
+}
+
+export interface WindowSpec {
+  readonly formation: number
+  readonly skip: number
+}
+
+export interface Manifest {
+  readonly version: number
+  readonly generatedAt: string
+  readonly asOf: string
+  readonly provider: string
+  readonly counts: { readonly total: number } & Partial<Record<Segment, number>>
+  readonly calendarDays: number
+  readonly windows: Readonly<Record<SignalId, WindowSpec>>
+  readonly membership: readonly Provenance[]
+  readonly excluded: readonly Exclusion[]
 }

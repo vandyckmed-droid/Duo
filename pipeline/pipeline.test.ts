@@ -1,622 +1,254 @@
 import { describe, expect, it } from 'vitest'
+import { SIGNAL_WINDOWS, momentumSignal } from '../src/calc/signals.ts'
+import type { Manifest, SecurityRecord } from '../src/domain/dataset.ts'
+import { fetchFrom, mergePoints } from './cache.ts'
+import { HISTORY_TRADING_DAYS, alignToCalendar, computeUniverse } from './compute.ts'
+import type { PricePoint } from './fmp.ts'
 import {
-  MAX_STALENESS,
   companyKey,
+  type Member,
   normaliseTicker,
   parseConstituentsTable,
   resolveSegmentConflicts,
   resolveShareClasses,
-  type Member,
-  type PriceEvidence,
 } from './membership.ts'
-import { fetchFrom, mergePoints } from './cache.ts'
-import { Fmp, readApiKey } from './fmp.ts'
-import { alignToCalendar, computeSecurity, computeUniverse } from './compute.ts'
-import { hasErrors, validate } from './validate.ts'
-import type { Manifest, SecurityRecord } from '../src/domain/dataset.ts'
-import { benchmarkFor } from '../src/domain/segments.ts'
-import type { PricePoint } from './fmp.ts'
+import { hasErrors, validate, validateDiversified } from './validate.ts'
 
-describe('normaliseTicker', () => {
-  it('converts index-list dots into the provider hyphen', () => {
-    expect(normaliseTicker('BRK.B')).toBe('BRK-B')
-    expect(normaliseTicker('bf.b')).toBe('BF-B')
-    expect(normaliseTicker(' AAPL ')).toBe('AAPL')
-  })
-})
-
-describe('parseConstituentsTable', () => {
-  const html = `
-    <h2 id="constituents">Constituents</h2>
-    <table>
-      <tr><th>Symbol</th><th>Security</th><th>GICS Sector</th><th>GICS Sub-Industry</th></tr>
-      <tr><td><a href="/x">AA</a></td><td><a>Alcoa</a></td><td>Materials</td><td>Aluminum</td></tr>
-      <tr><td>BRK.B</td><td>Berkshire Hathaway&nbsp;Inc.</td><td>Financials</td><td>Multi-Sector</td></tr>
-      <tr><td>Not a ticker</td><td>x</td><td>y</td><td>z</td></tr>
-    </table>`
-
-  it('reads ticker, name, sector and industry', () => {
-    const rows = parseConstituentsTable(html, '400')
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toEqual({
-      ticker: 'AA',
-      name: 'Alcoa',
-      segment: '400',
-      sector: 'Materials',
-      industry: 'Aluminum',
-    })
-  })
-
-  it('normalises tickers and decodes entities', () => {
-    const rows = parseConstituentsTable(html, '400')
-    expect(rows[1]?.ticker).toBe('BRK-B')
-    expect(rows[1]?.name).toBe('Berkshire Hathaway Inc.')
-  })
-
-  it('rejects rows that are not constituents', () => {
-    expect(parseConstituentsTable(html, '400').map((r) => r.ticker)).not.toContain('Not a ticker')
-  })
-
-  it('throws rather than returning nothing when the table is gone', () => {
-    expect(() => parseConstituentsTable('<p>no table</p>', '600')).toThrow(/not found/)
-  })
-})
-
-describe('eligibility', () => {
-  const member = (ticker: string, name: string, segment: Member['segment']): Member => ({
-    ticker,
-    name,
-    segment,
-    sector: 'Financials',
-    industry: 'Banks',
-  })
-
-  const evidence = (
-    overrides: Record<string, Partial<PriceEvidence>>,
-  ): ((t: string) => PriceEvidence) => {
-    const base: PriceEvidence = { staleness: 0, observations: 800, marketCap: 1e9 }
-    return (ticker) => ({ ...base, ...overrides[ticker] })
-  }
-
-  describe('resolveSegmentConflicts', () => {
-    it('keeps the larger segment when a ticker appears in two', () => {
-      // Membership churn: a name promoted out of the 600 can linger in a stale
-      // list. Keeping both would rank it twice, against two benchmarks.
-      const { members, excluded } = resolveSegmentConflicts([
-        member('XYZ', 'Xyz Inc.', '600'),
-        member('XYZ', 'Xyz Inc.', '500'),
-      ])
-      expect(members).toHaveLength(1)
-      expect(members[0]?.segment).toBe('500')
-      expect(excluded[0]?.reason).toContain('600')
-    })
-
-    it('is order-independent', () => {
-      const a = resolveSegmentConflicts([member('X', 'X', '500'), member('X', 'X', '400')])
-      const b = resolveSegmentConflicts([member('X', 'X', '400'), member('X', 'X', '500')])
-      expect(a.members[0]?.segment).toBe(b.members[0]?.segment)
-    })
-
-    it('leaves share classes alone — that decision needs prices', () => {
-      const { members } = resolveSegmentConflicts([
-        member('GOOG', 'Alphabet Inc. Class C', '500'),
-        member('GOOGL', 'Alphabet Inc. Class A', '500'),
-      ])
-      expect(members).toHaveLength(2)
-    })
-  })
-
-  describe('resolveShareClasses', () => {
-    const classes = [
-      member('GOOG', 'Alphabet Inc. Class C', '500'),
-      member('GOOGL', 'Alphabet Inc. Class A', '500'),
-    ]
-
-    it('keeps the class that is still trading over the larger one', () => {
-      // The bug this ordering exists for: choosing on market cap alone kept a
-      // listing whose feed had stopped three months earlier and dropped the
-      // live one, leaving a row that could never show a return.
-      const { eligible, excluded } = resolveShareClasses(
-        classes,
-        evidence({
-          GOOG: { staleness: 0, marketCap: 1e11 },
-          GOOGL: { staleness: 58, marketCap: 2e11 },
-        }),
-      )
-      expect(eligible.map((m) => m.ticker)).toEqual(['GOOG'])
-      expect(excluded.some((e) => e.ticker === 'GOOGL')).toBe(true)
-    })
-
-    it('prefers the larger listing when both are equally live', () => {
-      const { eligible } = resolveShareClasses(
-        classes,
-        evidence({ GOOG: { marketCap: 1e11 }, GOOGL: { marketCap: 2e11 } }),
-      )
-      expect(eligible.map((m) => m.ticker)).toEqual(['GOOGL'])
-    })
-
-    it('prefers the longer history before falling back to size', () => {
-      const { eligible } = resolveShareClasses(
-        classes,
-        evidence({
-          GOOG: { observations: 800, marketCap: 1 },
-          GOOGL: { observations: 200, marketCap: 1e12 },
-        }),
-      )
-      expect(eligible.map((m) => m.ticker)).toEqual(['GOOG'])
-    })
-
-    it('is deterministic when nothing separates the two', () => {
-      const { eligible } = resolveShareClasses(classes, evidence({}))
-      expect(eligible.map((m) => m.ticker)).toEqual(['GOOG'])
-    })
-
-    it('drops a listing that has stopped trading, and says why', () => {
-      const { eligible, excluded } = resolveShareClasses(
-        [member('DEAD', 'Defunct Industries', '600')],
-        evidence({ DEAD: { staleness: MAX_STALENESS + 1 } }),
-      )
-      expect(eligible).toHaveLength(0)
-      expect(excluded[0]?.reason).toContain('delisted')
-    })
-
-    it('keeps a listing that is merely a few days behind', () => {
-      const { eligible } = resolveShareClasses(
-        [member('SLOW', 'Slow Industries', '600')],
-        evidence({ SLOW: { staleness: MAX_STALENESS } }),
-      )
-      expect(eligible).toHaveLength(1)
-    })
-
-    it('drops a listing with no usable history at all', () => {
-      const { eligible, excluded } = resolveShareClasses(
-        [member('NEW', 'New Industries', '600')],
-        evidence({ NEW: { observations: 0, staleness: Number.POSITIVE_INFINITY } }),
-      )
-      expect(eligible).toHaveLength(0)
-      expect(excluded[0]?.reason).toBe('no usable price history')
-    })
-
-    it('leaves genuinely different companies alone', () => {
-      const { eligible } = resolveShareClasses(
-        [member('AAA', 'Alpha Industries', '500'), member('BBB', 'Beta Industries', '500')],
-        evidence({}),
-      )
-      expect(eligible).toHaveLength(2)
-    })
-
-    it('collapses share-class suffixes and parenthesised classes onto one company', () => {
-      expect(companyKey('Alphabet Inc. Class A')).toBe(companyKey('Alphabet Inc. Class C'))
-      expect(companyKey('Clearway Energy, Inc. (Class A)')).toBe(companyKey('Clearway Energy Inc.'))
-      expect(companyKey('Fox Corporation')).not.toBe(companyKey('Fortive Corporation'))
-    })
-  })
-})
-
-describe('cache merging', () => {
-  const p = (date: string, close: number): PricePoint => ({ date, close })
-
-  it('adds new observations and keeps the old ones', () => {
-    const merged = mergePoints([p('2026-01-02', 10)], [p('2026-01-03', 11)], '2020-01-01')
-    expect(merged).toEqual([p('2026-01-02', 10), p('2026-01-03', 11)])
-  })
-
-  it('lets a restated close correct the cached one', () => {
-    const merged = mergePoints([p('2026-01-02', 10)], [p('2026-01-02', 9.87)], '2020-01-01')
-    expect(merged).toEqual([p('2026-01-02', 9.87)])
-  })
-
-  it('never loses history when the provider returns nothing', () => {
-    // A failed or empty response must not shorten a good series.
-    const cached = [p('2026-01-02', 10), p('2026-01-03', 11)]
-    expect(mergePoints(cached, [], '2020-01-01')).toEqual(cached)
-  })
-
-  it('drops observations before the retention floor', () => {
-    const merged = mergePoints([p('2019-01-02', 5), p('2026-01-02', 10)], [], '2020-01-01')
-    expect(merged).toEqual([p('2026-01-02', 10)])
-  })
-
-  it('discards non-positive closes on the way in', () => {
-    const merged = mergePoints([], [p('2026-01-02', 0), p('2026-01-03', -1), p('2026-01-04', 3)], '2020-01-01')
-    expect(merged).toEqual([p('2026-01-04', 3)])
-  })
-
-  it('returns sorted, deduplicated dates', () => {
-    const merged = mergePoints([p('2026-01-03', 11)], [p('2026-01-02', 10), p('2026-01-03', 12)], '2020-01-01')
-    expect(merged.map((x) => x.date)).toEqual(['2026-01-02', '2026-01-03'])
-    expect(merged[1]?.close).toBe(12)
-  })
-})
-
-describe('fetchFrom', () => {
-  it('asks for the whole window when the cache is cold', () => {
-    expect(fetchFrom([], '2023-08-19')).toBe('2023-08-19')
-  })
-
-  it('re-requests a short overlap so restatements are picked up', () => {
-    // Starting the day after the last close would freeze an adjustment that
-    // the provider applies retroactively to already-published days.
-    expect(fetchFrom([{ date: '2026-08-18', close: 10 }], '2023-08-19', 7)).toBe('2026-08-11')
-  })
-
-  it('never asks for more than the retention window', () => {
-    expect(fetchFrom([{ date: '2023-08-20', close: 10 }], '2023-08-19', 30)).toBe('2023-08-19')
-  })
-})
-
-describe('alignToCalendar', () => {
-  it('builds the calendar from the benchmarks, not from the constituents', () => {
-    const benchmarks = new Map([
-      ['SPY', [{ date: '2026-01-02', close: 500 }, { date: '2026-01-05', close: 505 }]],
-    ])
-    // A constituent carrying a bogus weekend date must not shift every offset.
-    const securities = new Map([
-      ['AAA', [{ date: '2026-01-02', close: 10 }, { date: '2026-01-03', close: 11 }]],
-    ])
-    const aligned = alignToCalendar(benchmarks, securities)
-    expect(aligned.calendar).toEqual(['2026-01-02', '2026-01-05'])
-    expect(aligned.closes.get('AAA')).toEqual([10, null])
-    expect(aligned.orphanedObservations).toBe(1)
-  })
-
-  it('leaves a non-trading day as a hole rather than filling it', () => {
-    const benchmarks = new Map([
-      [
-        'SPY',
-        [
-          { date: '2026-01-02', close: 500 },
-          { date: '2026-01-05', close: 505 },
-          { date: '2026-01-06', close: 507 },
-        ],
-      ],
-    ])
-    const securities = new Map([
-      ['AAA', [{ date: '2026-01-02', close: 10 }, { date: '2026-01-06', close: 12 }]],
-    ])
-    expect(alignToCalendar(benchmarks, securities).closes.get('AAA')).toEqual([10, null, 12])
-  })
-})
-
-/** Deterministic price path shared by the compute tests. */
-function path(days: number, dailyRate: number, start = 100): PricePoint[] {
+/** `days` trading days (weekdays) of steady-growth prices ending 2026-08-18. */
+function points(days: number, rate = 0.001, until = '2026-08-18'): PricePoint[] {
   const out: PricePoint[] = []
-  let value = start
-  const d = new Date(Date.UTC(2022, 0, 3))
-  for (let i = 0; i < days; i++) {
-    // Weekdays only, which is close enough to a trading calendar for a fixture.
-    while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1)
-    out.push({ date: d.toISOString().slice(0, 10), close: Number(value.toFixed(4)) })
-    value *= 1 + dailyRate
-    d.setUTCDate(d.getUTCDate() + 1)
+  const d = new Date(`${until}T00:00:00Z`)
+  while (out.length < days) {
+    if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) {
+      out.push({ date: d.toISOString().slice(0, 10), close: 0 })
+    }
+    d.setUTCDate(d.getUTCDate() - 1)
   }
-  return out
+  out.reverse()
+  return out.map((p, i) => ({ ...p, close: 100 * (1 + rate) ** i * (1 + (i % 2 ? 0.002 : -0.002)) }))
 }
 
-describe('computeSecurity earnings', () => {
-  const benchmarkPoints = path(900, 0.0004)
-  const stockPoints = path(900, 0.0009)
-  const benchmarks = new Map([
-    ['SPY', benchmarkPoints],
-    ['IJH', benchmarkPoints],
-    ['IJR', benchmarkPoints],
-  ])
-  const aligned = alignToCalendar(benchmarks, new Map([['AAA', stockPoints]]))
-  const context = {
-    calendar: aligned.calendar,
-    benchmarks: new Map(
-      ['SPY', 'IJH', 'IJR'].map((t) => [t, aligned.closes.get(t) ?? []] as const),
-    ),
-  }
-  const compute = (earnings: { date: string; epsActual: number | null; epsEstimated: number | null; revenueActual: null; revenueEstimated: null }[]) =>
-    computeSecurity(
-      {
-        member: { ticker: 'AAA', name: 'Alpha Inc.', sector: 'T', industry: 'S', segment: '500' as const },
-        closes: aligned.closes.get('AAA') ?? [],
-        marketCap: 1e9,
-        priorMarketCap: 9e8,
-        stale: false,
-        earnings,
-      },
-      context,
-    ) as SecurityRecord
-
-  const ev = (date: string, actual: number | null = 1.5, est: number | null = 1.2) => ({
-    date,
-    epsActual: actual,
-    epsEstimated: est,
-    revenueActual: null as null,
-    revenueEstimated: null as null,
-  })
-
-  it('publishes the latest recent announcement with a price-scaled surprise', () => {
-    const anchor = aligned.calendar.length - 1
-    const date = aligned.calendar[anchor - 10] as string
-    const record = compute([ev(aligned.calendar[anchor - 200] as string), ev(date)])
-    expect(record.earnings?.date).toBe(date)
-    const price = (aligned.closes.get('AAA') ?? [])[anchor - 10] as number
-    expect(record.earnings?.surprise).toBeCloseTo(0.3 / price, 12)
-    expect(record.earnings?.sinceReturn).not.toBeNull()
-  })
-
-  it('publishes nothing when the latest announcement is stale', () => {
-    const anchor = aligned.calendar.length - 1
-    const record = compute([ev(aligned.calendar[anchor - 100] as string)])
-    expect(record.earnings).toBeUndefined()
-  })
-
-  it('never uses an announcement dated after the as-of date', () => {
-    const future = '2099-01-01'
-    const record = compute([ev(future)])
-    expect(record.earnings).toBeUndefined()
-  })
-
-  it('a missing estimate leaves the surprise null but publishes the facts', () => {
-    const anchor = aligned.calendar.length - 1
-    const date = aligned.calendar[anchor - 5] as string
-    const record = compute([ev(date, 1.5, null)])
-    expect(record.earnings?.date).toBe(date)
-    expect(record.earnings?.surprise).toBeNull()
-  })
+const member = (ticker: string, segment: Member['segment'] = '500', name = ticker): Member => ({
+  ticker,
+  name,
+  segment,
+  sector: 'Industrials',
 })
 
-describe('computeSecurity', () => {
-  const benchmarkPoints = path(900, 0.0004)
-  const stockPoints = path(900, 0.0009)
-  const benchmarks = new Map([
-    ['SPY', benchmarkPoints],
-    ['IJH', benchmarkPoints],
-    ['IJR', benchmarkPoints],
-  ])
-  const aligned = alignToCalendar(benchmarks, new Map([['AAA', stockPoints]]))
-  const context = {
-    calendar: aligned.calendar,
-    benchmarks: new Map(
-      ['SPY', 'IJH', 'IJR'].map((t) => [t, aligned.closes.get(t) ?? []] as const),
-    ),
-  }
-  const member = {
-    ticker: 'AAA',
-    name: 'Alpha Inc.',
-    sector: 'Technology',
-    industry: 'Software',
-  }
+describe('membership', () => {
+  it('normalises class-share tickers to the provider convention', () => {
+    expect(normaliseTicker('brk.b ')).toBe('BRK-B')
+  })
 
-  it('stamps every security with its own segment benchmark', () => {
-    for (const segment of ['500', '400', '600'] as const) {
-      const record = computeSecurity(
-        {
-          member: { ...member, segment },
-          closes: aligned.closes.get('AAA') ?? [],
-          marketCap: 1e9,
-          priorMarketCap: 9e8,
-          stale: false,
-        },
-        context,
-      ) as SecurityRecord
-      expect(record.benchmark).toBe(benchmarkFor(segment))
+  it('parses a constituents table and rejects junk rows', () => {
+    const html = `
+      <table id="constituents"><tbody>
+        <tr><th>Symbol</th><th>Security</th><th>GICS Sector</th></tr>
+        <tr><td><a href="/x">MMM</a></td><td>3M</td><td>Industrials</td></tr>
+        <tr><td>BRK.B</td><td>Berkshire Hathaway</td><td>Financials</td></tr>
+        <tr><td>not a ticker</td><td>Junk</td><td>Energy</td></tr>
+      </tbody></table>`
+    const rows = parseConstituentsTable(html, '500')
+    expect(rows.map((r) => r.ticker)).toEqual(['MMM', 'BRK-B'])
+    expect(rows[1]?.sector).toBe('Financials')
+  })
+
+  it('keeps the larger index when a ticker appears in two segments', () => {
+    const { members, excluded } = resolveSegmentConflicts([member('AAA', '600'), member('AAA', '400')])
+    expect(members).toHaveLength(1)
+    expect(members[0]?.segment).toBe('400')
+    expect(excluded[0]?.reason).toContain('kept the 400')
+  })
+
+  it('prefers the share class that is actually trading', () => {
+    const evidence: Record<string, { staleness: number; observations: number; marketCap: number | null }> = {
+      'CWEN-A': { staleness: 60, observations: 200, marketCap: 9e9 },
+      CWEN: { staleness: 0, observations: 250, marketCap: 5e9 },
+      GONE: { staleness: 90, observations: 40, marketCap: 1e9 },
     }
-  })
-
-  it('never regresses a 400 or 600 name against SPY', () => {
-    for (const segment of ['400', '600'] as const) {
-      const record = computeSecurity(
-        {
-          member: { ...member, segment },
-          closes: aligned.closes.get('AAA') ?? [],
-          marketCap: null,
-          priorMarketCap: null,
-          stale: false,
-        },
-        context,
-      ) as SecurityRecord
-      expect(record.benchmark).not.toBe('SPY')
-    }
-  })
-
-  it('fails loudly if a segment benchmark is absent from the dataset', () => {
-    expect(() =>
-      computeSecurity(
-        {
-          member: { ...member, segment: '600' },
-          closes: aligned.closes.get('AAA') ?? [],
-          marketCap: null,
-          priorMarketCap: null,
-          stale: false,
-        },
-        { calendar: aligned.calendar, benchmarks: new Map([['SPY', aligned.closes.get('SPY') ?? []]]) },
-      ),
-    ).toThrow(/IJR/)
-  })
-
-  it('publishes the full metric family with prior values for rank change', () => {
-    const record = computeSecurity(
-      {
-        member: { ...member, segment: '500' },
-        closes: aligned.closes.get('AAA') ?? [],
-        marketCap: 1e9,
-        priorMarketCap: 9e8,
-        stale: false,
-      },
-      context,
-    ) as SecurityRecord
-
-    expect(record.returns['12-1']).toBeGreaterThan(0)
-    expect(record.returns['6-1']).toBeGreaterThan(0)
-    expect(record.returns['3M']).toBeGreaterThan(0)
-    expect(record.volatility['1Y']).toBeGreaterThanOrEqual(0)
-    expect(record.beta).toBeGreaterThan(0)
-    expect(record.betaObservations).toBeGreaterThan(500)
-    // Outrunning the benchmark every day leaves a positive residual.
-    expect(record.residuals['12M']).toBeGreaterThan(0)
-    expect(record.prior.returns['12-1']).not.toBeNull()
-    expect(record.history.days).toBe(900)
-    expect(record.low52).toBeLessThan(record.high52 as number)
-  })
-
-  it('leaves metrics blank rather than inventing them for a short history', () => {
-    const short = alignToCalendar(benchmarks, new Map([['NEW', path(60, 0.001)]]))
-    const record = computeSecurity(
-      {
-        member: { ...member, ticker: 'NEW', segment: '500' },
-        closes: short.closes.get('NEW') ?? [],
-        marketCap: null,
-        priorMarketCap: null,
-        stale: false,
-      },
-      { calendar: short.calendar, benchmarks: context.benchmarks },
-    ) as SecurityRecord
-    expect(record.returns['12-1']).toBeNull()
-    expect(record.beta).toBeNull()
-    expect(record.residuals['12M']).toBeNull()
-  })
-
-  it('drops a name with no usable history and says why', () => {
-    const { securities, excluded } = computeUniverse(
+    const { eligible, excluded } = resolveShareClasses(
       [
-        {
-          member: { ...member, ticker: 'DEAD', segment: '500' },
-          closes: Array.from({ length: aligned.calendar.length }, () => null),
-          marketCap: null,
-          priorMarketCap: null,
-          stale: true,
-        },
+        member('CWEN-A', '500', 'Clearway Energy Class A'),
+        member('CWEN', '500', 'Clearway Energy Class C'),
+        member('GONE', '600', 'Gone Corp'),
       ],
-      context,
+      (t) => evidence[t] as { staleness: number; observations: number; marketCap: number | null },
     )
-    expect(securities).toHaveLength(0)
-    expect(excluded[0]).toEqual({ ticker: 'DEAD', reason: 'no usable price history' })
+    expect(eligible.map((m) => m.ticker)).toEqual(['CWEN'])
+    expect(excluded.map((e) => e.ticker).sort()).toEqual(['CWEN-A', 'GONE'])
+  })
+
+  it('recognises one company across share-class naming noise', () => {
+    expect(companyKey('Alphabet Inc. (Class A)')).toBe(companyKey('Alphabet Inc. (Class C)'))
+    expect(companyKey('Coca-Cola Company')).not.toBe(companyKey('Coca-Cola Consolidated'))
   })
 })
 
-describe('validate', () => {
-  const base: SecurityRecord = {
-    ticker: 'AAA',
-    name: 'Alpha',
-    segment: '400',
-    benchmark: 'IJH',
-    sector: 'Technology',
-    industry: 'Software',
-    marketCap: 1e9,
-    returns: { '12-1': 0.2 },
-    residuals: { '12M': 0.1 },
-    volatility: { '1Y': 0.3 },
-    returnPerVol: 0.6,
-    maxDrawdown: -0.2,
-    beta: 1.1,
-    betaR2: 0.4,
-    betaObservations: 700,
-    last: 10,
+describe('price cache', () => {
+  it('merges with later observations winning and trims old history', () => {
+    const merged = mergePoints(
+      [
+        { date: '2026-01-02', close: 10 },
+        { date: '2026-01-03', close: 11 },
+      ],
+      [
+        { date: '2026-01-03', close: 11.5 },
+        { date: '2026-01-06', close: 12 },
+      ],
+      '2026-01-03',
+    )
+    expect(merged).toEqual([
+      { date: '2026-01-03', close: 11.5 },
+      { date: '2026-01-06', close: 12 },
+    ])
+  })
+
+  it('re-requests a short overlap rather than only the missing days', () => {
+    expect(fetchFrom([{ date: '2026-08-10', close: 10 }], '2025-01-01')).toBe('2026-08-03')
+    expect(fetchFrom([], '2025-01-01')).toBe('2025-01-01')
+  })
+})
+
+describe('compute', () => {
+  it('aligns securities onto the anchor calendar and computes full records', () => {
+    const anchor = points(HISTORY_TRADING_DAYS + 10)
+    const full = points(HISTORY_TRADING_DAYS + 10, 0.0015)
+    const young = points(60)
+    const aligned = alignToCalendar(anchor, new Map([
+      ['FULL', full],
+      ['YOUNG', young],
+    ]))
+    expect(aligned.calendar).toHaveLength(HISTORY_TRADING_DAYS)
+
+    const result = computeUniverse([member('FULL'), member('YOUNG', '600')], aligned)
+    expect(result.securities.map((s) => s.ticker)).toEqual(['FULL'])
+    expect(result.excluded[0]).toMatchObject({ ticker: 'YOUNG' })
+    expect(result.excluded[0]?.reason).toContain('12-1')
+
+    const record = result.securities[0] as SecurityRecord
+    expect(record.signals['12-1']).toBeTypeOf('number')
+    expect(record.signals['6-1']).toBeTypeOf('number')
+    expect(record.last).toBeGreaterThanOrEqual(record.low52)
+    expect(record.last).toBeLessThanOrEqual(record.high52)
+    expect(record.lastDate).toBe(aligned.calendar.at(-1))
+
+    // The record's signal equals the calc layer's answer on the aligned series.
+    const closes = aligned.closes.get('FULL') as (number | null)[]
+    expect(record.signals['12-1']).toBeCloseTo(
+      momentumSignal(closes, SIGNAL_WINDOWS['12-1'] as { formation: number; skip: number }) as number,
+      12,
+    )
+  })
+
+  it('drops observations on dates the anchor never traded', () => {
+    const anchor: PricePoint[] = [
+      { date: '2026-08-17', close: 100 },
+      { date: '2026-08-18', close: 101 },
+    ]
+    const aligned = alignToCalendar(anchor, new Map([
+      ['ODD', [{ date: '2026-08-16', close: 55 }, { date: '2026-08-18', close: 56 }]],
+    ]))
+    expect(aligned.closes.get('ODD')).toEqual([null, 56])
+  })
+})
+
+function security(ticker: string, overrides: Partial<SecurityRecord> = {}): SecurityRecord {
+  return {
+    ticker,
+    name: ticker,
+    segment: '500',
+    sector: 'Industrials',
+    signals: { '12-1': 1.2, '6-1': 0.8 },
+    last: 100,
     lastDate: '2026-08-18',
-    low52: 8,
-    high52: 12,
-    history: { days: 700, from: '2023-08-18', to: '2026-08-18' },
-    prior: { returns: { '12-1': 0.1 }, residuals: {}, volatility: {}, returnPerVol: 0.4, marketCap: 9e8 },
+    low52: 80,
+    high52: 120,
+    ...overrides,
   }
-  const universe = [
-    base,
-    { ...base, ticker: 'BBB', segment: '500' as const, benchmark: 'SPY' },
-    { ...base, ticker: 'CCC', segment: '600' as const, benchmark: 'IJR' },
-  ]
-  const manifest: Manifest = {
-    version: 3,
-    generatedAt: '2026-08-19T00:00:00.000Z',
+}
+
+function manifestFor(securities: readonly SecurityRecord[]): Manifest {
+  return {
+    version: 4,
+    generatedAt: '2026-08-19T09:00:00Z',
     asOf: '2026-08-18',
-    provider: 'financialmodelingprep.com/stable',
-    benchmarks: { '500': 'SPY', '400': 'IJH', '600': 'IJR' },
-    membership: [
-      { segment: '500', source: 'fmp:sp500-constituent', detail: '', count: 1 },
-      { segment: '400', source: 'wikipedia:sp400', detail: '', count: 1 },
-      { segment: '600', source: 'wikipedia:sp600', detail: '', count: 1 },
-    ],
-    counts: { total: 3 },
-    calendarDays: 756,
-    windows: {},
-    betaLookback: 756,
-    rankChangeOffset: 63,
+    provider: 'test',
+    counts: { total: securities.length },
+    calendarDays: 288,
+    windows: SIGNAL_WINDOWS,
+    membership: [],
     excluded: [],
   }
-  const options = { minimumSecurities: 3, minimumCoverage: 0.5 }
+}
 
-  it('passes a well-formed dataset', () => {
-    expect(hasErrors(validate(universe, manifest, options))).toBe(false)
+describe('validate', () => {
+  const options = { minimumSecurities: 2, today: '2026-08-19' }
+
+  it('passes a healthy dataset', () => {
+    const securities = [security('AAA'), security('BBB')]
+    expect(hasErrors(validate(securities, manifestFor(securities), options))).toBe(false)
   })
 
-  it('rejects a 400 name carrying the large-cap benchmark', () => {
-    const wrong = [{ ...base, benchmark: 'SPY' }, ...universe.slice(1)]
-    const issues = validate(wrong, manifest, options)
-    expect(hasErrors(issues)).toBe(true)
-    expect(issues.some((i) => i.message.includes('must use IJH'))).toBe(true)
+  it('rejects short universes, broken signals, broken ranges and stale dates', () => {
+    const short = validate([security('AAA')], manifestFor([security('AAA')]), options)
+    expect(hasErrors(short)).toBe(true)
+
+    const bad = [
+      security('AAA', { signals: { '12-1': Number.NaN, '6-1': 1 } }),
+      security('BBB', { last: 130 }),
+      security('BBB'),
+    ]
+    const issues = validate(bad, manifestFor(bad), options)
+    expect(issues.filter((i) => i.level === 'error').map((i) => i.message)).toEqual([
+      'AAA: signal 12-1 is not a finite number',
+      'BBB: last close 130 outside its 52-week range',
+      'BBB: published twice',
+    ])
+
+    const extreme = [
+      security('AAA', { signals: { '12-1': 29.8, '6-1': 2.2 } }),
+      security('BBB', { signals: { '12-1': 120, '6-1': 1 } }),
+    ]
+    const extremeIssues = validate(extreme, manifestFor(extreme), options)
+    // A genuine hyper-momentum year (SNDK 2026 scored 29.8) warns; only a
+    // value beyond anything real prices produce blocks the publish.
+    expect(extremeIssues.filter((i) => i.level === 'error').map((i) => i.message)).toEqual([
+      'BBB: signal 12-1 = 120.0 is implausible',
+    ])
+    expect(extremeIssues.some((i) => i.level === 'warning' && i.message.startsWith('AAA'))).toBe(true)
+
+    const stale = validate(
+      [security('AAA'), security('BBB')],
+      { ...manifestFor([security('AAA'), security('BBB')]), asOf: '2026-07-01' },
+      options,
+    )
+    expect(hasErrors(stale)).toBe(true)
   })
 
-  it('rejects a duplicated ticker', () => {
-    expect(hasErrors(validate([...universe, base], manifest, options))).toBe(true)
-  })
+  it('checks the Diversified 50 for coherence with its universe', () => {
+    const securities = [security('AAA'), security('BBB'), security('CCC')]
+    const config = { correlationWindow: 252, similarityNeighbors: 3, lambda: 1, listSize: 2 }
+    const good = {
+      config,
+      picks: [
+        { ticker: 'AAA', rawRank: 1, similarity: 0 },
+        { ticker: 'CCC', rawRank: 3, similarity: 0.4 },
+      ],
+    }
+    expect(hasErrors(validateDiversified(good, securities))).toBe(false)
 
-  it('rejects a dataset that lost a whole segment', () => {
-    const issues = validate(universe.slice(0, 2), manifest, options)
-    expect(issues.some((i) => i.message.includes('segment 600 has no securities'))).toBe(true)
-  })
-
-  it('rejects a suspiciously small dataset', () => {
-    expect(hasErrors(validate(universe, manifest, { minimumSecurities: 900 }))).toBe(true)
-  })
-
-  it('rejects thin coverage of the headline metric', () => {
-    const blank = universe.map((s) => ({ ...s, returns: {} }))
-    expect(hasErrors(validate(blank, manifest, { ...options, minimumCoverage: 0.75 }))).toBe(true)
-  })
-
-  it('rejects a manifest whose benchmark map disagrees with the domain', () => {
-    const tampered = { ...manifest, benchmarks: { ...manifest.benchmarks, '400': 'SPY' } }
-    expect(hasErrors(validate(universe, tampered, options))).toBe(true)
-  })
-
-  it('rejects a manifest missing a membership source', () => {
-    const partial = { ...manifest, membership: manifest.membership.slice(0, 2) }
-    expect(hasErrors(validate(universe, partial, options))).toBe(true)
-  })
-
-  it('rejects non-finite and negative numbers', () => {
-    const bad = [{ ...base, returns: { '12-1': Number.POSITIVE_INFINITY } }, ...universe.slice(1)]
-    expect(hasErrors(validate(bad, manifest, options))).toBe(true)
-    const negativeVol = [{ ...base, volatility: { '1Y': -0.1 } }, ...universe.slice(1)]
-    expect(hasErrors(validate(negativeVol, manifest, options))).toBe(true)
-  })
-
-  it('warns without failing when many names are stale', () => {
-    const stale = universe.map((s) => ({ ...s, stale: true }))
-    const issues = validate(stale, manifest, options)
-    expect(hasErrors(issues)).toBe(false)
-    expect(issues.some((i) => i.level === 'warning')).toBe(true)
-  })
-})
-
-describe('readApiKey', () => {
-  it('prefers the provider-specific name', () => {
-    expect(readApiKey({ FMP_API_KEY: 'a', API_KEY: 'b' })).toBe('a')
-  })
-
-  it('falls back to the name the credential is already configured under', () => {
-    // Renaming a working secret to satisfy a preference is a worse trade than
-    // reading the second name.
-    expect(readApiKey({ API_KEY: 'b' })).toBe('b')
-  })
-
-  it('treats blank and whitespace-only values as absent', () => {
-    // An unset repository secret interpolates to an empty string rather than
-    // vanishing, so the variable exists and is useless.
-    expect(readApiKey({ FMP_API_KEY: '', API_KEY: 'b' })).toBe('b')
-    expect(readApiKey({ FMP_API_KEY: '   ', API_KEY: 'b' })).toBe('b')
-    expect(readApiKey({})).toBe('')
-    expect(readApiKey({ FMP_API_KEY: undefined })).toBe('')
-  })
-
-  it('trims a stray newline from the value', () => {
-    expect(readApiKey({ FMP_API_KEY: 'a\n' })).toBe('a')
-  })
-
-  it('refuses to construct a client without a key, naming both variables', () => {
-    expect(() => new Fmp(readApiKey({}))).toThrow(/FMP_API_KEY or API_KEY/)
+    const bad = {
+      config,
+      picks: [
+        { ticker: 'ZZZ', rawRank: 2, similarity: 0 },
+        { ticker: 'ZZZ', rawRank: 9, similarity: 2 },
+      ],
+    }
+    const messages = validateDiversified(bad, securities).map((i) => i.message)
+    expect(messages).toContain('diversified: ZZZ is not in the published universe')
+    expect(messages).toContain('diversified: ZZZ picked twice')
+    expect(messages).toContain('diversified: ZZZ has raw rank 9')
+    expect(messages).toContain('diversified: ZZZ has similarity 2')
+    expect(messages).toContain('diversified: first pick ZZZ is raw #2, not the raw #1')
   })
 })

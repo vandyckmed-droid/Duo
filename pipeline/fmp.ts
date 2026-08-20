@@ -2,8 +2,8 @@
  * The Financial Modeling Prep client.
  *
  * This is the only module in the repository that reads the API key, and the
- * whole pipeline is the only thing that runs it — inside GitHub Actions, never
- * in the browser. The key comes from the environment, is never written to a
+ * pipeline is the only thing that runs it — inside GitHub Actions, never in
+ * the browser. The key comes from the environment, is never written to a
  * file, never appears in a log line, and never reaches the published dataset.
  * The client bundle has no code path that can talk to a provider at all.
  *
@@ -24,10 +24,8 @@ const BASE = 'https://financialmodelingprep.com/stable'
 export const KEY_VARIABLES = ['FMP_API_KEY', 'API_KEY'] as const
 
 /**
- * Reads the key from the environment.
- *
- * Returns the value only — never which variable it came from, and never any
- * part of the key itself — so nothing a caller logs can narrow it down.
+ * Reads the key from the environment. Returns the value only — never which
+ * variable it came from — so nothing a caller logs can narrow it down.
  */
 export function readApiKey(env: Record<string, string | undefined>): string {
   for (const name of KEY_VARIABLES) {
@@ -60,9 +58,6 @@ export interface Quote {
   readonly name: string | null
   readonly price: number | null
   readonly marketCap: number | null
-  readonly exchange: string | null
-  readonly yearLow: number | null
-  readonly yearHigh: number | null
 }
 
 export interface PricePoint {
@@ -74,21 +69,6 @@ export interface Constituent {
   readonly symbol: string
   readonly name: string
   readonly sector: string
-  readonly industry: string
-}
-
-/**
- * One earnings announcement. `date` is the announcement date — the day the
- * numbers became public information — which is what makes point-in-time use
- * possible. Estimates are the consensus as it stood at announcement; either
- * side may be absent for small names.
- */
-export interface EarningsEvent {
-  readonly date: string
-  readonly epsActual: number | null
-  readonly epsEstimated: number | null
-  readonly revenueActual: number | null
-  readonly revenueEstimated: number | null
 }
 
 export class Fmp {
@@ -102,8 +82,8 @@ export class Fmp {
    * A 429 is a statement about the whole API key, not about the one request
    * that happened to receive it. Backing off only that request leaves every
    * other worker hammering the same limit, and the resulting burst of refusals
-   * walks straight through all four retries of whatever tickers are in flight
-   * — which is how a run silently loses thirty alphabetically-adjacent names.
+   * walks straight through all the retries of whatever tickers are in flight —
+   * which is how a run silently loses thirty alphabetically-adjacent names.
    *
    * So two shared mechanisms, both spanning every worker:
    *
@@ -205,8 +185,8 @@ export class Fmp {
         this.relax()
         return body
       } catch (error) {
-        // The message is built from the path and status only. Interpolating the
-        // URL would put the key into the run log.
+        // The message is built from the path and status only. Interpolating
+        // the URL would put the key into the run log.
         if (error instanceof FmpError && error.status === 402) throw error
         lastError = error
         if (attempt < this.retries) await sleep(800 * attempt)
@@ -215,17 +195,7 @@ export class Fmp {
     throw lastError instanceof Error ? lastError : new FmpError(`${path}: failed`)
   }
 
-  /** Whether an endpoint is reachable on this subscription. */
-  async probe(path: string, params: Record<string, string> = {}): Promise<boolean> {
-    try {
-      const body = await this.get(path, params)
-      return Array.isArray(body) ? body.length > 0 : body !== null
-    } catch {
-      return false
-    }
-  }
-
-  /** S&P 500 constituents, with GICS sector and sub-industry. */
+  /** S&P 500 constituents, with GICS sector. */
   async sp500Constituents(): Promise<Constituent[]> {
     const body = await this.get('sp500-constituent')
     if (!Array.isArray(body)) throw new FmpError('sp500-constituent: unexpected payload')
@@ -235,7 +205,6 @@ export class Fmp {
         symbol: String(row['symbol'] ?? '').trim(),
         name: String(row['name'] ?? '').trim(),
         sector: String(row['sector'] ?? '').trim(),
-        industry: String(row['subSector'] ?? '').trim(),
       }))
       .filter((c) => c.symbol.length > 0)
   }
@@ -250,7 +219,15 @@ export class Fmp {
       const body = await this.get('etf/holdings', { symbol })
       if (!Array.isArray(body)) return null
       const symbols = body
-        .map((row) => (row && typeof row === 'object' ? String((row as Record<string, unknown>)['asset'] ?? (row as Record<string, unknown>)['symbol'] ?? '') : ''))
+        .map((row) =>
+          row && typeof row === 'object'
+            ? String(
+                (row as Record<string, unknown>)['asset'] ??
+                  (row as Record<string, unknown>)['symbol'] ??
+                  '',
+              )
+            : '',
+        )
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
       return symbols.length > 0 ? symbols : null
@@ -259,7 +236,7 @@ export class Fmp {
     }
   }
 
-  /** Quotes in batches, for market cap and the 52-week range. */
+  /** Quotes in batches, for the market cap used in share-class resolution. */
   async quotes(symbols: readonly string[], batchSize = 200): Promise<Map<string, Quote>> {
     const out = new Map<string, Quote>()
     for (let i = 0; i < symbols.length; i += batchSize) {
@@ -276,9 +253,6 @@ export class Fmp {
           name: str(r['name']),
           price: num(r['price']),
           marketCap: num(r['marketCap']),
-          exchange: str(r['exchange']),
-          yearLow: num(r['yearLow']),
-          yearHigh: num(r['yearHigh']),
         })
       }
     }
@@ -310,63 +284,6 @@ export class Fmp {
     return [...byDate]
       .map(([date, close]) => ({ date, close }))
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
-  }
-
-  /**
-   * Every announcement in a date range, market-wide, via the earnings
-   * calendar. One ranged request replaces ~1,500 per-symbol ones for the
-   * production refresh; symbols outside the universe are filtered by the
-   * caller. Kept to short ranges — the endpoint caps its row count.
-   */
-  async earningsCalendar(
-    from: string,
-    to: string,
-  ): Promise<(EarningsEvent & { symbol: string })[]> {
-    const body = await this.get('earnings-calendar', { from, to })
-    if (!Array.isArray(body)) throw new FmpError('earnings-calendar: unexpected payload')
-    const out: (EarningsEvent & { symbol: string })[] = []
-    for (const row of body) {
-      if (!row || typeof row !== 'object') continue
-      const r = row as Record<string, unknown>
-      const symbol = str(r['symbol'])
-      const date = String(r['date'] ?? '').slice(0, 10)
-      if (!symbol || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
-      out.push({
-        symbol: symbol.trim().toUpperCase(),
-        date,
-        epsActual: num(r['epsActual']),
-        epsEstimated: num(r['epsEstimated']),
-        revenueActual: num(r['revenueActual']),
-        revenueEstimated: num(r['revenueEstimated']),
-      })
-    }
-    return out
-  }
-
-  /**
-   * Earnings announcements for one symbol, oldest first. One announcement per
-   * date — the provider occasionally repeats a row, and keeping the last
-   * occurrence matches how it orders corrections.
-   */
-  async earnings(symbol: string, limit = 80): Promise<EarningsEvent[]> {
-    const body = await this.get('earnings', { symbol, limit: String(limit) })
-    if (!Array.isArray(body)) throw new FmpError(`${symbol}: unexpected payload`)
-
-    const byDate = new Map<string, EarningsEvent>()
-    for (const row of body) {
-      if (!row || typeof row !== 'object') continue
-      const r = row as Record<string, unknown>
-      const date = String(r['date'] ?? '').slice(0, 10)
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue
-      byDate.set(date, {
-        date,
-        epsActual: num(r['epsActual']),
-        epsEstimated: num(r['epsEstimated']),
-        revenueActual: num(r['revenueActual']),
-        revenueEstimated: num(r['revenueEstimated']),
-      })
-    }
-    return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   }
 }
 
