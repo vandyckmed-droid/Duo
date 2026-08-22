@@ -1,0 +1,10 @@
+{
+ "asOf": "2026-08-21",
+ "recordedAt": "2026-08-22T11:42:49Z",
+ "source": "https://vandyckmed-droid.github.io/Duo/data/",
+ "datasetGeneratedAt": "2026-08-22T09:21:18.778Z",
+ "datasetVersion": 3,
+ "mainShaAtRecording": "4cc10cfc194a212e1cc2c64b0ea93935374b6551",
+ "workflowRun": "32571021514",
+ "note": "Snapshot of exactly what production Pages served; never recomputed, never overwritten."
+}
